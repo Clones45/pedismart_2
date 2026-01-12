@@ -1,12 +1,15 @@
 import axios from "axios";
 import { useUserStore } from "@/store/userStore";
 
+// Google Maps API Key - Uses environment variable with fallback for production build stability
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_MAP_API_KEY || "AIzaSyAyZzkYVI7m2XPsy8yVUVhTTQapJAX59EM";
+
 export const getLatLong = async (placeId: string) => {
     try {
         const response = await axios.get("https://maps.googleapis.com/maps/api/place/details/json", {
             params: {
                 placeid: placeId,
-                key: process.env.EXPO_PUBLIC_MAP_API_KEY,
+                key: GOOGLE_MAPS_API_KEY,
             },
         });
         const data = response.data;
@@ -62,7 +65,7 @@ export const reverseGeocode = async (latitude: number, longitude: number) => {
     try {
         console.log(`Reverse geocoding for: ${roundedLat}, ${roundedLng}`);
         const response = await axios.get(
-            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${process.env.EXPO_PUBLIC_MAP_API_KEY}`,
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_MAPS_API_KEY}`,
             { timeout: 10000 } // 10 second timeout
         );
 
@@ -105,7 +108,7 @@ export const getPlacesSuggestions = async (query: string) => {
                 location: `${location?.latitude},${location?.longitude}`,
                 radius: 50000,
                 components: 'country:PH',
-                key: process.env.EXPO_PUBLIC_MAP_API_KEY,
+                key: GOOGLE_MAPS_API_KEY,
             }
         }
         );
@@ -225,7 +228,7 @@ export const getEstimatedTravelTime = async (
                     origins: `${originLat},${originLng}`,
                     destinations: `${destLat},${destLng}`,
                     mode: travelMode,
-                    key: process.env.EXPO_PUBLIC_MAP_API_KEY,
+                    key: GOOGLE_MAPS_API_KEY,
                 },
                 timeout: 10000
             }

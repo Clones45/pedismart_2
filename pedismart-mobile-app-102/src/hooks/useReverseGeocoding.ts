@@ -35,10 +35,13 @@ export const useReverseGeocoding = (
             const isPlusCode = initialAddress && (initialAddress.length < 15 || initialAddress.includes('+'));
             const isLiveLocation = initialAddress === 'Live Location';
 
+            // Heuristic for coordinate strings (e.g., "6.7499, 125.3575")
+            // Coordinate strings usually follow a pattern of numbers and a comma
+            const isCoordinate = initialAddress && /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(initialAddress);
+
             // If we have a good looking address, use it initially
-            if (initialAddress && !isPlusCode && !isLiveLocation) {
+            if (initialAddress && !isPlusCode && !isLiveLocation && !isCoordinate) {
                 setAddress(initialAddress);
-                // We could still fetch in background to verify? No, save API calls.
                 return;
             }
 
