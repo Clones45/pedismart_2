@@ -7,6 +7,8 @@ import AvailableRideCard from '@/components/customer/AvailableRideCard';
 import { getAvailableRidesForJoining } from '@/service/rideService';
 import { useWS } from '@/service/WSProvider';
 import { StatusBar } from 'expo-status-bar';
+import { useUserStore } from '@/store/userStore';
+import MapPickerModal from '@/components/customer/MapPickerModal';
 
 const AvailableRides = () => {
   const [availableRides, setAvailableRides] = useState<any[]>([]);
@@ -14,6 +16,36 @@ const AvailableRides = () => {
   const [refreshing, setRefreshing] = useState(false);
   const params = useLocalSearchParams() as any;
   const { on, off } = useWS();
+  const { location: userLocation } = useUserStore();
+
+  // Route selection state
+  const [pickup, setPickup] = useState<any>(null);
+  const [drop, setDrop] = useState<any>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [isMapModalVisible, setMapModalVisible] = useState(false);
+
+  useEffect(() => {
+    // Initialize from params if available
+    if (params?.pickup_latitude && params?.pickup_longitude) {
+      setPickup({
+        address: params.pickup_address || "Selected Pickup",
+        latitude: parseFloat(params.pickup_latitude),
+        longitude: parseFloat(params.pickup_longitude),
+      });
+    } else if (userLocation) {
+      setPickup(userLocation);
+    }
+
+    if (params?.drop_latitude && params?.drop_longitude) {
+      setDrop({
+        address: params.drop_address || "Selected Drop-off",
+        latitude: parseFloat(params.drop_latitude),
+        longitude: parseFloat(params.drop_longitude),
+      });
+      setIsConfirmed(true); // If coming from ridebooking, we assume it's confirmed
+    }
+  }, [params, userLocation]);
 
   const fetchRides = async () => {
     try {
@@ -157,11 +189,75 @@ const AvailableRides = () => {
           </View>
         ) : (
           <>
+            {/* Route Selection Section */}
+            <View style={styles.routeContainer}>
+              <CustomText fontSize={14} fontFamily="Bold" style={styles.sectionTitle}>
+                Your Trip Details
+              </CustomText>
+
+              <View style={styles.locationSelector}>
+                <TouchableOpacity
+                  style={styles.locationItem}
+                  onPress={() => {
+                    setModalTitle("pickup");
+                    setMapModalVisible(true);
+                  }}
+                >
+                  <Ionicons name="location" size={20} color="#4CAF50" />
+                  <View style={styles.locationTextContainer}>
+                    <CustomText fontSize={10} style={styles.label}>PICKUP</CustomText>
+                    <CustomText fontSize={12} numberOfLines={1}>
+                      {pickup?.address || "Tap to select pickup"}
+                    </CustomText>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+
+                <View style={styles.divider} />
+
+                <TouchableOpacity
+                  style={styles.locationItem}
+                  onPress={() => {
+                    setModalTitle("drop");
+                    setMapModalVisible(true);
+                  }}
+                >
+                  <Ionicons name="flag" size={20} color="#f44336" />
+                  <View style={styles.locationTextContainer}>
+                    <CustomText fontSize={10} style={styles.label}>DROP-OFF</CustomText>
+                    <CustomText fontSize={12} numberOfLines={1}>
+                      {drop?.address || "Tap to select destination"}
+                    </CustomText>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                </TouchableOpacity>
+              </View>
+
+              {!isConfirmed && pickup && drop ? (
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={() => setIsConfirmed(true)}
+                >
+                  <CustomText fontSize={14} fontFamily="Bold" style={styles.confirmButtonText}>
+                    Confirm Your Route
+                  </CustomText>
+                </TouchableOpacity>
+              ) : isConfirmed ? (
+                <View style={styles.confirmedStatus}>
+                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                  <CustomText fontSize={12} style={{ color: '#4CAF50' }}>Route Confirmed</CustomText>
+                  <TouchableOpacity onPress={() => setIsConfirmed(false)}>
+                    <CustomText fontSize={12} style={styles.editText}>Edit</CustomText>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+
             <View style={styles.infoCard}>
               <Ionicons name="information-circle" size={20} color="#2196F3" />
               <CustomText fontSize={11} style={styles.infoText}>
                 {availableRides.length} ride{availableRides.length !== 1 ? 's' : ''} available.
-                Tap "Request to Join" to send a request to the rider.
+                {!isConfirmed ? "Please confirm your route first." : "Tap \"Request to Join\" to send a request."}
               </CustomText>
             </View>
 
@@ -172,16 +268,8 @@ const AvailableRides = () => {
                 onJoinSuccess={() => {
                   fetchRides();
                 }}
-                joinerPickup={params?.pickup_address ? {
-                  address: params.pickup_address,
-                  latitude: parseFloat(params.pickup_latitude),
-                  longitude: parseFloat(params.pickup_longitude),
-                } : undefined}
-                joinerDrop={params?.drop_address ? {
-                  address: params.drop_address,
-                  latitude: parseFloat(params.drop_latitude),
-                  longitude: parseFloat(params.drop_longitude),
-                } : undefined}
+                joinerPickup={isConfirmed ? pickup : undefined}
+                joinerDrop={isConfirmed ? drop : undefined}
               />
             ))}
 
@@ -189,6 +277,22 @@ const AvailableRides = () => {
           </>
         )}
       </ScrollView>
+
+      {isMapModalVisible && (
+        <MapPickerModal
+          visible={isMapModalVisible}
+          title={modalTitle}
+          onClose={() => setMapModalVisible(false)}
+          selectedLocation={modalTitle === "pickup" ? pickup : drop}
+          onSelectLocation={(data) => {
+            if (data) {
+              if (modalTitle === "pickup") setPickup(data);
+              else setDrop(data);
+              setIsConfirmed(false); // Reset confirmation on change
+            }
+          }}
+        />
+      )}
     </View>
   );
 };
@@ -261,6 +365,70 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 20,
+  },
+  routeContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  sectionTitle: {
+    marginBottom: 12,
+    color: '#333',
+  },
+  locationSelector: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 12,
+  },
+  locationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginHorizontal: 12,
+  },
+  locationTextContainer: {
+    flex: 1,
+  },
+  label: {
+    color: '#999',
+    marginBottom: 2,
+  },
+  confirmButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  confirmButtonText: {
+    color: '#fff',
+  },
+  confirmedStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    backgroundColor: '#E8F5E9',
+    padding: 8,
+    borderRadius: 8,
+  },
+  editText: {
+    color: '#2196F3',
+    marginLeft: 'auto',
+    textDecorationLine: 'underline',
   },
 });
 

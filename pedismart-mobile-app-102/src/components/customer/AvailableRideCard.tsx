@@ -97,6 +97,7 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
   };
 
   const isFull = ride.currentPassengerCount >= ride.maxPassengers;
+  const isRouteMissing = !joinerPickup || !joinerDrop;
 
   return (
     <View style={styles.card}>
@@ -148,15 +149,21 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
       <TouchableOpacity
         style={[
           styles.joinButton,
-          (isFull || joining) && styles.joinButtonDisabled,
+          (isFull || joining || isRouteMissing) && styles.joinButtonDisabled,
         ]}
         onPress={handleJoin}
-        disabled={isFull || joining}
+        disabled={isFull || joining || isRouteMissing}
         activeOpacity={0.7}
       >
-        <Ionicons name="add-circle" size={16} color="#fff" />
+        <Ionicons
+          name={isRouteMissing ? "warning-outline" : "add-circle"}
+          size={16}
+          color="#fff"
+        />
         <CustomText fontSize={10} fontFamily="SemiBold" style={styles.joinButtonText}>
-          {joining ? 'Sending...' : isFull ? 'Full' : 'Request to Join'}
+          {joining ? 'Sending...' :
+            isFull ? 'Full' :
+              isRouteMissing ? 'Confirm Route Above' : 'Request to Join'}
         </CustomText>
       </TouchableOpacity>
     </View>
