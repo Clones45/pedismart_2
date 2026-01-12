@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { reverseGeocode } from '@/utils/mapUtils';
+import { reverseGeocode, isPlusCode as checkPlusCode } from '@/utils/mapUtils';
 
 interface UseReverseGeocodingResult {
     address: string;
@@ -32,7 +32,7 @@ export const useReverseGeocoding = (
             // For now, let's treat "P8MH+P3C" as something that needs update.
             // If initialAddress is just "Live Location", we definitely want to update.
 
-            const isPlusCode = initialAddress && (initialAddress.length < 15 || initialAddress.includes('+'));
+            const isPlusCode = initialAddress && checkPlusCode(initialAddress);
             const isLiveLocation = initialAddress === 'Live Location';
 
             // Heuristic for coordinate strings (e.g., "6.7499, 125.3575")

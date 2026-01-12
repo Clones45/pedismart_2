@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Modal, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import CustomText from '../shared/CustomText';
+import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
 
 interface PassengerJoinRequestModalProps {
   visible: boolean;
@@ -19,6 +20,18 @@ const PassengerJoinRequestModal: React.FC<PassengerJoinRequestModalProps> = ({
   onDecline,
 }) => {
   if (!passengerDetails) return null;
+
+  const { address: pickupAddress } = useReverseGeocoding(
+    rideDetails?.joinerPickup?.latitude || rideDetails?.pickup?.latitude,
+    rideDetails?.joinerPickup?.longitude || rideDetails?.pickup?.longitude,
+    rideDetails?.joinerPickup?.address || rideDetails?.pickup?.address
+  );
+
+  const { address: dropAddress } = useReverseGeocoding(
+    rideDetails?.joinerDrop?.latitude || rideDetails?.drop?.latitude,
+    rideDetails?.joinerDrop?.longitude || rideDetails?.drop?.longitude,
+    rideDetails?.joinerDrop?.address || rideDetails?.drop?.address
+  );
 
   return (
     <Modal
@@ -74,7 +87,7 @@ const PassengerJoinRequestModal: React.FC<PassengerJoinRequestModalProps> = ({
             )}
           </View>
 
-          {/* Ride Info */}
+          {/* Ride Info Section (Skipping some content for brevity in replace) */}
           <View style={styles.rideInfoContainer}>
             <CustomText fontSize={12} fontFamily="SemiBold" style={styles.sectionTitle}>
               Requested Route
@@ -85,7 +98,7 @@ const PassengerJoinRequestModal: React.FC<PassengerJoinRequestModalProps> = ({
               <View style={{ flex: 1 }}>
                 <CustomText fontSize={10} fontFamily="Bold" style={{ color: '#4CAF50' }}>PICKUP</CustomText>
                 <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
-                  {rideDetails?.joinerPickup?.address || rideDetails?.pickup?.address || 'Pickup location'}
+                  {pickupAddress}
                 </CustomText>
               </View>
             </View>
@@ -95,7 +108,7 @@ const PassengerJoinRequestModal: React.FC<PassengerJoinRequestModalProps> = ({
               <View style={{ flex: 1 }}>
                 <CustomText fontSize={10} fontFamily="Bold" style={{ color: '#f44336' }}>DROP-OFF</CustomText>
                 <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
-                  {rideDetails?.joinerDrop?.address || rideDetails?.drop?.address || 'Drop location'}
+                  {dropAddress}
                 </CustomText>
               </View>
             </View>

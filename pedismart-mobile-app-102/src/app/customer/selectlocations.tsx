@@ -26,6 +26,7 @@ import { PIN_LOCATIONS } from "@/utils/LocationConfig";
 import { locationStyles } from "@/styles/locationStyles";
 import LocationItem from "@/components/customer/LocationItem";
 import MapPickerModal from "@/components/customer/MapPickerModal";
+import { useReverseGeocoding } from "@/hooks/useReverseGeocoding";
 
 export default function LocationSelection() {
   const { location, setLocation } = useUserStore();
@@ -39,6 +40,32 @@ export default function LocationSelection() {
   const [modalTitle, setModalTitle] = useState("drop");
   const [isMapModalVisible, setMapModalVisible] = useState(false);
   const [distanceInfo, setDistanceInfo] = useState<any>(null);
+
+  // Resolve addresses if they are plus codes/coordinates
+  const { address: resolvedPickupAddress } = useReverseGeocoding(
+    pickupCoords?.latitude || (focusedInput === "pickup" ? location?.latitude : undefined),
+    pickupCoords?.longitude || (focusedInput === "pickup" ? location?.longitude : undefined),
+    pickup
+  );
+
+  const { address: resolvedDropAddress } = useReverseGeocoding(
+    dropCoords?.latitude,
+    dropCoords?.longitude,
+    drop
+  );
+
+  // Sync resolved addresses back to state when they change
+  useEffect(() => {
+    if (resolvedPickupAddress && resolvedPickupAddress !== pickup && resolvedPickupAddress !== "Getting address...") {
+      setPickup(resolvedPickupAddress);
+    }
+  }, [resolvedPickupAddress]);
+
+  useEffect(() => {
+    if (resolvedDropAddress && resolvedDropAddress !== drop && resolvedDropAddress !== "Getting address...") {
+      setDrop(resolvedDropAddress);
+    }
+  }, [resolvedDropAddress]);
 
   const fetchLocation = async (query: string) => {
     if (query?.length > 4) {

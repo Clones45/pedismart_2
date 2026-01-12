@@ -4,6 +4,24 @@ import { useUserStore } from "@/store/userStore";
 // Google Maps API Key - Uses environment variable with fallback for production build stability
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_MAP_API_KEY || "AIzaSyAyZzkYVI7m2XPsy8yVUVhTTQapJAX59EM";
 
+/**
+ * Checks if a string looks like a Google Plus Code.
+ * Plus codes typical pattern: P8MH+P3C or P8MH+P3C Davao City
+ */
+export const isPlusCode = (address: string): boolean => {
+    if (!address) return false;
+    // Look for the '+' sign which is characteristic of plus codes
+    // Also check if the part before effectively looks like a code (alphanumeric, no spaces)
+    const plusIndex = address.indexOf('+');
+    if (plusIndex === -1) return false;
+
+    // If '+' is present, we check if it's likely a plus code
+    // Standard format is 4-8 chars + 2-3 chars
+    const parts = address.split(' ');
+    const codePart = parts[0]; // Usually the first part is the code
+    return codePart.includes('+');
+};
+
 export const getLatLong = async (placeId: string) => {
     try {
         const response = await axios.get("https://maps.googleapis.com/maps/api/place/details/json", {
@@ -70,7 +88,44 @@ export const reverseGeocode = async (latitude: number, longitude: number) => {
         );
 
         if (response.data.status === 'OK' && response.data.results && response.data.results.length > 0) {
-            const address = response.data.results[0].formatted_address;
+            const results = response.data.results;
+
+            // Priority types that are usually human-readable
+            const priorityTypes = ['street_address', 'route', 'neighborhood', 'establishment', 'point_of_interest'];
+
+            // Find the best human-readable address
+            let bestAddress = results[0].formatted_address;
+            let foundBetter = false;
+
+            // First pass: look for high-priority human-readable types
+            for (const result of results) {
+                const hasPriorityType = result.types?.some((type: string) => priorityTypes.includes(type));
+                const plusCode = isPlusCode(result.formatted_address) ||
+                    result.types?.includes('plus_code');
+
+                if (hasPriorityType && !plusCode) {
+                    bestAddress = result.formatted_address;
+                    foundBetter = true;
+                    break;
+                }
+            }
+
+            // Second pass: if no priority type found, just find anything that isn't a plus code
+            if (!foundBetter) {
+                for (const result of results) {
+                    const plusCode = isPlusCode(result.formatted_address) ||
+                        result.types?.includes('plus_code');
+
+                    if (!plusCode) {
+                        bestAddress = result.formatted_address;
+                        foundBetter = true;
+                        break;
+                    }
+                }
+            }
+
+            const address = bestAddress;
+
             console.log(`Address found: ${address}`);
 
             // Cache the result

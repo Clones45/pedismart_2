@@ -9,6 +9,7 @@ import { useWS } from '@/service/WSProvider';
 import { StatusBar } from 'expo-status-bar';
 import { useUserStore } from '@/store/userStore';
 import MapPickerModal from '@/components/customer/MapPickerModal';
+import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
 
 const AvailableRides = () => {
   const [availableRides, setAvailableRides] = useState<any[]>([]);
@@ -24,6 +25,32 @@ const AvailableRides = () => {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [modalTitle, setModalTitle] = useState("");
   const [isMapModalVisible, setMapModalVisible] = useState(false);
+
+  // Resolve pickup/drop addresses if they are plus codes/coordinates
+  const { address: resolvedPickupAddress, isLoading: isLoadingPickup } = useReverseGeocoding(
+    pickup?.latitude,
+    pickup?.longitude,
+    pickup?.address
+  );
+
+  const { address: resolvedDropAddress, isLoading: isLoadingDrop } = useReverseGeocoding(
+    drop?.latitude,
+    drop?.longitude,
+    drop?.address
+  );
+
+  // Sync resolved addresses back to state when they change
+  useEffect(() => {
+    if (resolvedPickupAddress && pickup && resolvedPickupAddress !== pickup.address) {
+      setPickup((prev: any) => ({ ...prev, address: resolvedPickupAddress }));
+    }
+  }, [resolvedPickupAddress]);
+
+  useEffect(() => {
+    if (resolvedDropAddress && drop && resolvedDropAddress !== drop.address) {
+      setDrop((prev: any) => ({ ...prev, address: resolvedDropAddress }));
+    }
+  }, [resolvedDropAddress]);
 
   useEffect(() => {
     // Initialize from params if available
@@ -207,7 +234,7 @@ const AvailableRides = () => {
                   <View style={styles.locationTextContainer}>
                     <CustomText fontSize={10} style={styles.label}>PICKUP</CustomText>
                     <CustomText fontSize={12} numberOfLines={1}>
-                      {pickup?.address || "Tap to select pickup"}
+                      {resolvedPickupAddress || (isLoadingPickup ? "Getting address..." : "Tap to select pickup")}
                     </CustomText>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -226,7 +253,7 @@ const AvailableRides = () => {
                   <View style={styles.locationTextContainer}>
                     <CustomText fontSize={10} style={styles.label}>DROP-OFF</CustomText>
                     <CustomText fontSize={12} numberOfLines={1}>
-                      {drop?.address || "Tap to select destination"}
+                      {resolvedDropAddress || (isLoadingDrop ? "Getting address..." : "Tap to select destination")}
                     </CustomText>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#ccc" />

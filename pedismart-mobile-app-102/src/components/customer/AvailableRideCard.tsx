@@ -5,6 +5,7 @@ import CustomText from '../shared/CustomText';
 import PassengerIndicator from '../shared/PassengerIndicator';
 import { joinRide } from '@/service/rideService';
 import { router } from 'expo-router';
+import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
 
 interface AvailableRideCardProps {
   ride: any;
@@ -29,12 +30,28 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
 }) => {
   const [joining, setJoining] = React.useState(false);
 
+  // Use reverse geocoding for ride addresses if they are plus codes/coordinates
+  const { address: pickupAddress } = useReverseGeocoding(
+    ride.pickup?.latitude,
+    ride.pickup?.longitude,
+    ride.pickup?.address
+  );
+
+  const { address: dropAddress } = useReverseGeocoding(
+    ride.drop?.latitude,
+    ride.drop?.longitude,
+    ride.drop?.address
+  );
+
   const handleJoin = async () => {
     if (joining) return;
 
+    const fromLoc = joinerPickup?.address || pickupAddress;
+    const toLoc = joinerDrop?.address || dropAddress;
+
     Alert.alert(
       'Join Ride',
-      `Join this ride from ${ride.pickup?.address?.substring(0, 30)}... to ${ride.drop?.address?.substring(0, 30)}...?`,
+      `Join this ride from ${fromLoc.substring(0, 30)}... to ${toLoc.substring(0, 30)}...?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -113,7 +130,7 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
         <View style={styles.routeRow}>
           <Ionicons name="location" size={14} color="#4CAF50" />
           <CustomText fontSize={10} numberOfLines={1} style={styles.routeText}>
-            {ride.pickup?.address}
+            {pickupAddress}
           </CustomText>
         </View>
         <View style={styles.arrowContainer}>
@@ -122,7 +139,7 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
         <View style={styles.routeRow}>
           <Ionicons name="flag" size={14} color="#f44336" />
           <CustomText fontSize={10} numberOfLines={1} style={styles.routeText}>
-            {ride.drop?.address}
+            {dropAddress}
           </CustomText>
         </View>
       </View>
