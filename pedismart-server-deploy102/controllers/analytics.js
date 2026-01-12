@@ -4,8 +4,7 @@
 // revenue/fare metrics are not meaningful until pricing is re-enabled.
 
 import User from '../models/User.js';
-import Ride from "../models/Ride.js";
-import AccuracyLog from "../models/AccuracyLog.js";
+import Ride from '../models/Ride.js';
 import Rating from '../models/Rating.js';
 import { StatusCodes } from 'http-status-codes';
 
@@ -332,19 +331,19 @@ export const getCombinedAnalytics = async (req, res) => {
     userStats.forEach(stat => {
       const role = stat._id.role;
       const sex = stat._id.sex || 'unknown';
-
+      
       if (role !== 'admin') {
         // Initialize the gender category if it doesn't exist
         if (sex !== 'male' && sex !== 'female') {
           // Skip unknown gender or add to a separate category if needed
           return;
         }
-
+        
         // Make sure the role is valid
         if (role !== 'customer' && role !== 'rider') {
           return;
         }
-
+        
         formattedUserStats.gender[sex][role] = stat.count;
         formattedUserStats.gender[sex].total += stat.count;
         formattedUserStats.gender.total[role] += stat.count;
@@ -445,14 +444,14 @@ export const getCombinedAnalytics = async (req, res) => {
 export const getCompletedRidesDebug = async (req, res) => {
   try {
     console.log('🔍 Debug: Checking completed rides in database...');
-
+    
     // Get all completed rides without date filter
-    const allCompletedRides = await Ride.find({
-      status: 'COMPLETED'
+    const allCompletedRides = await Ride.find({ 
+      status: 'COMPLETED' 
     }).populate('customer', 'firstName lastName').populate('rider', 'firstName lastName vehicleType');
-
+    
     console.log(`📊 Found ${allCompletedRides.length} completed rides total`);
-
+    
     // Get completed rides with date breakdown
     const ridesByDate = await Ride.aggregate([
       { $match: { status: 'COMPLETED' } },
@@ -467,7 +466,7 @@ export const getCompletedRidesDebug = async (req, res) => {
       },
       { $sort: { '_id.date': -1 } }
     ]);
-
+    
     res.status(StatusCodes.OK).json({
       totalCompletedRides: allCompletedRides.length,
       ridesByDate,
@@ -585,7 +584,7 @@ export const getRevenueTrends = async (req, res) => {
 
     let groupBy;
     let dateFormat;
-
+    
     // Determine grouping based on time filter
     switch (timeFilter) {
       case '24h':
@@ -938,88 +937,8 @@ export const getPopularRoutes = async (req, res) => {
   } catch (error) {
     console.error('Error fetching popular routes:', error);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
-      message: 'Failed to fetch debug data',
+      message: 'Failed to fetch popular routes',
       error: error.message
     });
-  }
-};
-
-// Alias for dashboard stats
-export const getDashboardStats = getCombinedAnalytics;
-
-// Alias for revenue chart data
-export const getRevenueChartData = getRevenueTrends;
-
-export const getSystemAccuracyMetrics = async (req, res) => {
-  try {
-    // OTP Accuracy
-    const otpStats = await AccuracyLog.aggregate([
-      { $match: { metric: "OTP_VALIDATION" } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          success: { $sum: { $cond: ["$success", 1, 0] } }
-        }
-      }
-    ]);
-
-    // FSM Integrity
-    const fsmStats = await AccuracyLog.aggregate([
-      { $match: { metric: "FSM_TRANSITION" } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          success: { $sum: { $cond: ["$success", 1, 0] } }
-        }
-      }
-    ]);
-
-    // WS Delivery Rate (approximate based on logged events vs total emits if supported, or just success rate of events)
-    const wsStats = await AccuracyLog.aggregate([
-      { $match: { metric: { $in: ["WS_DELIVERY", "WS_RECEIVE"] } } },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: 1 },
-          success: { $sum: { $cond: ["$success", 1, 0] } }
-        }
-      }
-    ]);
-
-    // GPS Accuracy (Average deviation in meters)
-    const gpsStats = await AccuracyLog.aggregate([
-      { $match: { metric: "GPS_ACCURACY" } },
-      {
-        $group: {
-          _id: null,
-          averageErrorMeters: { $avg: "$value" },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const metrics = {
-      otp_accuracy: otpStats[0] ? ((otpStats[0].success / otpStats[0].total) * 100).toFixed(2) : 0,
-      fsm_integrity: fsmStats[0] ? ((fsmStats[0].success / fsmStats[0].total) * 100).toFixed(2) : 0,
-      websocket_delivery_rate: wsStats[0] ? ((wsStats[0].success / wsStats[0].total) * 100).toFixed(2) : 0,
-      gps_average_precision_meters: gpsStats[0] ? (gpsStats[0].averageErrorMeters).toFixed(2) : 0
-    };
-
-    const sample_size = {
-      otp_attempts: otpStats[0] ? otpStats[0].total : 0,
-      fsm_transitions: fsmStats[0] ? fsmStats[0].total : 0,
-      gps_points: gpsStats[0] ? gpsStats[0].count : 0,
-      ws_events: wsStats[0] ? wsStats[0].total : 0
-    };
-
-    res.status(StatusCodes.OK).json({
-      metrics,
-      sample_size
-    });
-  } catch (error) {
-    console.error("Error fetching accuracy metrics:", error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: "Failed to fetch accuracy metrics" });
   }
 };

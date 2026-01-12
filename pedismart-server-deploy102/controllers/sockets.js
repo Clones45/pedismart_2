@@ -6,9 +6,11 @@ import Rating from "../models/Rating.js";
 import Chat from "../models/Chat.js";
 import Message from "../models/Message.js";
 import { calculateDistance, MAX_DISTANCE_KM } from "../utils/mapUtils.js";
+import { createOngoingCheckpoint } from "../utils/checkpointUtils.js";
 
 const onDutyRiders = new Map();
-import AccuracyLog from "../models/AccuracyLog.js";
+// Track last checkpoint time per ride to avoid too frequent updates
+const lastCheckpointTime = new Map();
 
 // ============================================
 // Helper function to filter rides by distance
@@ -177,7 +179,7 @@ const handleSocketConnection = (io) => {
         updateNearbyriders();
       });
 
-      socket.on("updateLocation", (coords) => {
+      socket.on("updateLocation", async (coords) => {
         if (onDutyRiders.has(user.id)) {
           onDutyRiders.get(user.id).coords = coords;
           console.log(`rider ${user.id} updated location.`);
@@ -186,6 +188,64 @@ const handleSocketConnection = (io) => {
             riderId: user.id,
             coords,
           });
+
+          // ============================================
+          // UPDATE RIDER LOCATION IN DATABASE for active rides
+          // This ensures customer can see distance even if socket updates are missed
+          // ============================================
+          if (coords.rideId && coords.latitude && coords.longitude) {
+            try {
+              await Ride.findByIdAndUpdate(coords.rideId, {
+                riderLocation: {
+                  latitude: coords.latitude,
+                  longitude: coords.longitude,
+                  heading: coords.heading || null,
+                  updatedAt: new Date(),
+                }
+              });
+              console.log(`📍 Updated rider location in DB for ride ${coords.rideId}`);
+            } catch (dbError) {
+              console.error(`⚠️ Failed to update rider location in DB:`, dbError);
+            }
+          }
+          // ============================================
+
+          // ============================================
+          // CHECKPOINT SNAPSHOT: Create ONGOING checkpoint during active ride
+          // Only create checkpoint every 2 minutes to avoid excessive storage
+          // ============================================
+          if (coords.rideId) {
+            const rideId = coords.rideId;
+            const now = Date.now();
+            const lastTime = lastCheckpointTime.get(rideId) || 0;
+            const CHECKPOINT_INTERVAL = 2 * 60 * 1000; // 2 minutes
+
+            if (now - lastTime >= CHECKPOINT_INTERVAL) {
+              try {
+                // Verify ride is in progress
+                const ride = await Ride.findById(rideId);
+                if (ride && ['START', 'ARRIVED'].includes(ride.status)) {
+                  await createOngoingCheckpoint(
+                    rideId,
+                    user.id,
+                    ride.customer,
+                    {
+                      latitude: coords.latitude,
+                      longitude: coords.longitude,
+                      heading: coords.heading,
+                      speed: coords.speed,
+                    },
+                    null // Address will be null for ongoing checkpoints
+                  );
+                  lastCheckpointTime.set(rideId, now);
+                  console.log(`📍 Checkpoint: ONGOING snapshot created for ride ${rideId}`);
+                }
+              } catch (checkpointError) {
+                console.error(`⚠️ Failed to create ONGOING checkpoint:`, checkpointError);
+              }
+            }
+          }
+          // ============================================
         }
       });
 
@@ -395,9 +455,15 @@ const handleSocketConnection = (io) => {
             clearInterval(retryInterval);
           });
 
-          socket.on("cancelRide", async () => {
+          socket.on("cancelRide", async (data) => {
             canceled = true;
             clearInterval(retryInterval);
+
+            // Extract reason from data (can be string rideId or object with rideId and reason)
+            let cancellationReason = null;
+            if (data && typeof data === 'object' && data.reason) {
+              cancellationReason = data.reason;
+            }
 
             // ✅ FIXED: Update status to CANCELLED instead of deleting, but protect COMPLETED rides
             const cancelRide = await Ride.findById(rideId)
@@ -414,7 +480,12 @@ const handleSocketConnection = (io) => {
                 cancelRide.status = "CANCELLED";
                 cancelRide.cancelledBy = "customer";
                 cancelRide.cancelledAt = new Date();
+                cancelRide.cancellationReason = cancellationReason; // Save cancellation reason
                 await cancelRide.save();
+
+                if (cancellationReason) {
+                  console.log(`📝 Cancellation reason: ${cancellationReason}`);
+                }
                 console.log(`🚫 Customer ${user.id} canceled ride ${rideId} - status updated to CANCELLED (NOT DELETED)`);
 
                 // Broadcast to ride room with cancellation details
@@ -465,12 +536,40 @@ const handleSocketConnection = (io) => {
       });
     }
 
-    socket.on("subscribeToriderLocation", (riderId) => {
+    socket.on("subscribeToriderLocation", async (riderId) => {
+      socket.join(`rider_${riderId}`);
+      console.log(`User ${user.id} subscribed to rider ${riderId}'s location.`);
+
+      // First try to get rider location from onDutyRiders map (real-time)
       const rider = onDutyRiders.get(riderId);
-      if (rider) {
-        socket.join(`rider_${riderId}`);
+      if (rider && rider.coords) {
         socket.emit("riderLocationUpdate", { riderId, coords: rider.coords });
-        console.log(`User ${user.id} subscribed to rider ${riderId}'s location.`);
+        console.log(`📍 Sent real-time rider location from memory for rider ${riderId}`);
+        return;
+      }
+
+      // Fallback: Try to get rider location from the active ride in database
+      try {
+        const activeRide = await Ride.findOne({
+          rider: riderId,
+          status: { $in: ['START', 'ARRIVED'] }
+        }).select('riderLocation');
+
+        if (activeRide && activeRide.riderLocation && activeRide.riderLocation.latitude) {
+          socket.emit("riderLocationUpdate", {
+            riderId,
+            coords: {
+              latitude: activeRide.riderLocation.latitude,
+              longitude: activeRide.riderLocation.longitude,
+              heading: activeRide.riderLocation.heading || 0,
+            }
+          });
+          console.log(`📍 Sent rider location from database for rider ${riderId}`);
+        } else {
+          console.log(`⚠️ No rider location available for rider ${riderId}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching rider location from database:`, error);
       }
     });
 
@@ -491,6 +590,125 @@ const handleSocketConnection = (io) => {
       console.log(`🚪 User ${user.id} (${user.role}) leaving ride room ${rideId}`);
       socket.leave(`ride_${rideId}`);
       console.log(`✅ User ${user.id} successfully left ride room ${rideId}`);
+    });
+
+    // ============ GLOBAL CANCEL RIDE HANDLER ============
+    // This handles cancellation for rides in START status (before OTP verification)
+    socket.on("cancelRide", async (data) => {
+      try {
+        // Extract rideId and reason from data
+        let rideId, cancellationReason;
+        if (typeof data === 'string') {
+          rideId = data;
+          cancellationReason = null;
+        } else if (data && typeof data === 'object') {
+          rideId = data.rideId;
+          cancellationReason = data.reason || null;
+        }
+
+        if (!rideId) {
+          console.log(`❌ Cancel ride failed: No rideId provided`);
+          socket.emit("cancelRideError", { message: "No ride ID provided" });
+          return;
+        }
+
+        console.log(`🚫 User ${user.id} (${user.role}) attempting to cancel ride ${rideId}`);
+        if (cancellationReason) {
+          console.log(`📝 Cancellation reason: ${cancellationReason}`);
+        }
+
+        const ride = await Ride.findById(rideId)
+          .populate("customer", "firstName lastName phone")
+          .populate("rider", "firstName lastName phone");
+
+        if (!ride) {
+          console.log(`❌ Ride ${rideId} not found`);
+          socket.emit("cancelRideError", { message: "Ride not found" });
+          return;
+        }
+
+        // Check if user is authorized to cancel this ride
+        const isCustomer = ride.customer._id.toString() === user.id;
+        const isRider = ride.rider && ride.rider._id.toString() === user.id;
+
+        if (!isCustomer && !isRider) {
+          console.log(`❌ User ${user.id} not authorized to cancel ride ${rideId}`);
+          socket.emit("cancelRideError", { message: "Not authorized to cancel this ride" });
+          return;
+        }
+
+        // Only allow cancellation for SEARCHING_FOR_RIDER or START status (before OTP verification)
+        if (ride.status !== "SEARCHING_FOR_RIDER" && ride.status !== "START") {
+          console.log(`❌ Cannot cancel ride ${rideId} - status is ${ride.status}`);
+          socket.emit("cancelRideError", { message: `Cannot cancel ride with status: ${ride.status}. Use early stop for rides in progress.` });
+          return;
+        }
+
+        // Protect COMPLETED rides
+        if (ride.status === "COMPLETED") {
+          console.log(`🔒 Ride ${rideId} is COMPLETED - protected from cancellation`);
+          socket.emit("cancelRideError", { message: "Cannot cancel a completed ride" });
+          return;
+        }
+
+        // Determine who cancelled
+        const cancelledBy = isCustomer ? "customer" : "rider";
+        const cancellerName = isCustomer
+          ? `${ride.customer.firstName} ${ride.customer.lastName}`
+          : `${ride.rider.firstName} ${ride.rider.lastName}`;
+
+        // Update ride status
+        ride.status = "CANCELLED";
+        ride.cancelledBy = cancelledBy;
+        ride.cancelledAt = new Date();
+        ride.cancellationReason = cancellationReason;
+        await ride.save();
+
+        console.log(`✅ Ride ${rideId} cancelled by ${cancelledBy} (${cancellerName})`);
+
+        // Broadcast to ride room
+        io.to(`ride_${rideId}`).emit("rideCanceled", {
+          message: "Ride has been cancelled",
+          ride: ride,
+          cancelledBy: cancelledBy,
+          cancellerName: cancellerName,
+          reason: cancellationReason
+        });
+
+        // Notify the other party
+        if (isCustomer && ride.rider) {
+          // Customer cancelled - notify rider
+          const riderSocket = getRiderSocket(ride.rider._id.toString());
+          if (riderSocket) {
+            console.log(`🚨 Sending cancellation alert to rider ${ride.rider._id}`);
+            riderSocket.emit("passengerCancelledRide", {
+              rideId: rideId,
+              message: `${cancellerName} has cancelled the ride`,
+              passengerName: cancellerName,
+              ride: ride,
+              reason: cancellationReason
+            });
+          }
+        } else if (isRider) {
+          // Rider cancelled - notify customer (customer is already in ride room)
+          console.log(`🚨 Rider cancelled ride ${rideId} - customer notified via ride room`);
+        }
+
+        // Remove from on-duty riders' screens
+        io.to("onDuty").emit("rideOfferCanceled", rideId);
+        io.to("onDuty").emit("rideCanceled", {
+          rideId: rideId,
+          ride: ride,
+          cancelledBy: cancelledBy,
+          cancellerName: cancellerName
+        });
+
+        console.log(`📢 Successfully cancelled ride ${rideId} and notified all parties`);
+
+      } catch (error) {
+        console.error(`❌ Error cancelling ride:`, error);
+        socket.emit("cancelRideError", { message: "Failed to cancel ride. Please try again." });
+      }
     });
 
     // ============ CHAT SOCKET EVENTS ============
@@ -964,7 +1182,7 @@ const handleSocketConnection = (io) => {
     // Approve passenger join request (rider only)
     socket.on("approveJoinRequest", async (data) => {
       try {
-        const { rideId, passengerId } = data;
+        const { rideId, passengerId, pickup, drop } = data;
         const riderId = user.id;
 
         console.log(`✅ Socket: Rider ${riderId} approving passenger ${passengerId} for ride ${rideId}`);
@@ -1016,7 +1234,9 @@ const handleSocketConnection = (io) => {
           lastName: passengerUser.lastName,
           phone: passengerUser.phone,
           status: "WAITING",
-          joinedAt: new Date()
+          joinedAt: new Date(),
+          pickup: pickup,
+          drop: drop
         });
         ride.currentPassengerCount = ride.passengers.length;
         await ride.save();
@@ -1297,43 +1517,18 @@ const handleSocketConnection = (io) => {
 
     // ============ END MULTI-PASSENGER SOCKET EVENTS ============
 
-    // ============ ACCURACY LOGGING EVENT ============
-    socket.on("accuracyEvent", async (data) => {
-      try {
-        console.log(`📊 Accuracy Event received from ${user.id}:`, data.metric);
-
-        const { metric, isCorrect, timestamp, context, value } = data;
-
-        // Handle boolean success flag directly from isCorrect
-        const success = isCorrect !== undefined ? isCorrect : true;
-
-        // Extract value - either from explicit value field or from context if specific metrics
-        let metricValue = value;
-        if (metric === "GPS_ACCURACY" && context?.errorMeters) {
-          metricValue = context.errorMeters;
-        }
-
-        await AccuracyLog.create({
-          metric,
-          success,
-          value: metricValue,
-          timestamp: timestamp ? new Date(timestamp) : new Date(),
-          rideId: context?.rideId || (data.rideId ? data.rideId : null), // Try to find rideId in context or root
-          userId: user.id,
-          meta: context || {}
-        });
-
-        // Acknowledge receipt if client is waiting (optional but good practice)
-        // socket.emit("accuracyEventAck", { metric, timestamp });
-
-      } catch (err) {
-        console.error("❌ Failed to log accuracy event:", err);
-      }
+    // ============ ERROR HANDLING ============
+    socket.on("error", (error) => {
+      console.error(`❌ Socket error for ${user.role} ${user.id}:`, error.message);
     });
 
-    socket.on("disconnect", () => {
-      if (user.role === "rider") onDutyRiders.delete(user.id);
-      console.log(`${user.role} ${user.id} disconnected.`);
+    socket.on("disconnect", (reason) => {
+      try {
+        if (user.role === "rider") onDutyRiders.delete(user.id);
+        console.log(`${user.role} ${user.id} disconnected. Reason: ${reason}`);
+      } catch (error) {
+        console.error(`❌ Error during disconnect cleanup for ${user.id}:`, error.message);
+      }
     });
 
     function updateNearbyriders() {

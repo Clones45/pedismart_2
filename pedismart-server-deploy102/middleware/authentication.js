@@ -12,9 +12,9 @@ const auth = async (req, res, next) => {
   const token = authHeader.split(" ")[1];
   try {
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-
+    
     // Set basic user info from token
-    req.user = {
+    req.user = { 
       id: payload.id,
       userId: payload.id, // Add userId for compatibility with chat controllers
       phone: payload.phone,
@@ -26,13 +26,13 @@ const auth = async (req, res, next) => {
 
     // Try to find user in User model first (handles both regular users and admins)
     const user = await User.findById(payload.id);
-
+    
     if (user) {
       // User found in User model
       req.user.name = user.firstName ? `${user.firstName} ${user.lastName}`.trim() : user.name;
       req.user.email = user.email;
       req.user.role = user.role;
-
+      
       // If user is admin role, set admin flags
       if (user.role === 'admin') {
         req.user.isAdmin = true;
@@ -41,7 +41,7 @@ const auth = async (req, res, next) => {
     } else {
       // Try Admin model as fallback (legacy support)
       const admin = await Admin.findById(payload.id);
-
+      
       if (!admin) {
         throw new NotFoundError("User not found");
       }

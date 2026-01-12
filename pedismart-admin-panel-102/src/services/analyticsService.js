@@ -30,7 +30,7 @@ export const analyticsService = {
       throw error;
     }
   },
-
+  
   // Get ride statistics
   getRideStats: async (timeFilter = '24h') => {
     try {
@@ -42,7 +42,7 @@ export const analyticsService = {
       throw error;
     }
   },
-
+  
   // Get combined analytics
   getCombinedAnalytics: async (timeFilter = '24h') => {
     try {
@@ -123,18 +123,6 @@ export const analyticsService = {
       return response.data;
     } catch (error) {
       console.error('Error fetching debug data:', error.response?.data || error.message);
-      throw error;
-    }
-  },
-
-  // Get system accuracy metrics
-  getSystemAccuracy: async () => {
-    try {
-      const request = createAuthenticatedRequest();
-      const response = await request.get(`/api/analytics/accuracy`);
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching system accuracy:', error.response?.data || error.message);
       throw error;
     }
   }

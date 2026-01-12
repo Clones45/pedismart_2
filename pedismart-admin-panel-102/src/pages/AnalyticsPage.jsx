@@ -19,13 +19,11 @@ import TopPerformingRiders from "../components/analytics/TopPerformingRiders";
 import RevenueTrendsChart from "../components/analytics/RevenueTrendsChart";
 import PeakHoursAnalysis from "../components/analytics/PeakHoursAnalysis";
 import PopularRoutes from "../components/analytics/PopularRoutes";
-import AccuracyMetrics from "../components/analytics/AccuracyMetrics";
 
 const AnalyticsPage = () => {
 	const { isDarkMode } = useTheme();
 	const [timeFilter, setTimeFilter] = useState("all");
 	const [analyticsData, setAnalyticsData] = useState(null);
-	const [accuracyData, setAccuracyData] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const reportRef = useRef(null);
@@ -48,14 +46,8 @@ const AnalyticsPage = () => {
 		try {
 			setLoading(true);
 			setError(null);
-
-			const [data, accData] = await Promise.all([
-				analyticsService.getCombinedAnalytics(timeFilter),
-				analyticsService.getSystemAccuracy()
-			]);
-
+			const data = await analyticsService.getCombinedAnalytics(timeFilter);
 			setAnalyticsData(data);
-			setAccuracyData(accData);
 		} catch (err) {
 			console.error("Error fetching analytics data:", err);
 			setError("Failed to load analytics data");
@@ -205,8 +197,8 @@ const AnalyticsPage = () => {
 							{timeFilter === "24h"
 								? "Last 24 Hours"
 								: timeFilter === "week"
-									? "Last Week"
-									: "Last Month"}
+								? "Last Week"
+								: "Last Month"}
 						</p>
 					</div>
 
@@ -226,15 +218,6 @@ const AnalyticsPage = () => {
 							{/* Overview cards */}
 							<AnalyticsOverviewCards data={analyticsData} />
 
-							{/* Accuracy Metrics Section */}
-							<motion.div
-								initial={{ opacity: 0, y: 20 }}
-								animate={{ opacity: 1, y: 0 }}
-								transition={{ delay: 0.15 }}
-								className={`rounded-xl p-6 print:bg-white print:shadow print:border transition-colors duration-300 ${isDarkMode ? 'bg-gray-700 bg-opacity-50 backdrop-filter backdrop-blur-lg' : 'bg-white shadow-lg border border-gray-200'}`}
-							>
-								<AccuracyMetrics data={accuracyData} />
-							</motion.div>
 
 							{/* Revenue Trends Section */}
 							<motion.div

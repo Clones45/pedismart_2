@@ -1,5 +1,5 @@
 import express from 'express';
-import {
+import { 
   getUserStats,
   getRideStats,
   getCombinedAnalytics,
@@ -8,10 +8,7 @@ import {
   getRideStatusMonitoring,
   getPeakHoursAnalysis,
   getPopularRoutes,
-  getCompletedRidesDebug,
-  getDashboardStats,
-  getRevenueChartData,
-  getSystemAccuracyMetrics
+  getCompletedRidesDebug
 } from '../controllers/analytics.js';
 import authenticateUser from '../middleware/authentication.js';
 
@@ -21,7 +18,7 @@ const router = express.Router();
 const isAdmin = (req, res, next) => {
   // Temporarily bypass admin check for development
   return next();
-
+  
   // Original check (commented out for now)
   /*
   if (req.user && req.user.role === 'admin') {
@@ -36,9 +33,6 @@ const isAdmin = (req, res, next) => {
 router.use(authenticateUser, isAdmin);
 
 // Analytics routes
-router.get('/dashboard', getDashboardStats);
-router.get('/revenue-chart', getRevenueChartData);
-router.get('/accuracy', getSystemAccuracyMetrics);
 router.get('/user-stats', getUserStats);
 router.get('/ride-stats', getRideStats);
 router.get('/combined', getCombinedAnalytics);
