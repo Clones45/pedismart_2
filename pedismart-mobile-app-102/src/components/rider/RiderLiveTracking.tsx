@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity, Image, Platform } from "react-native";
-import React, { FC, memo, useEffect, useRef, useState } from "react";
+import React, { FC, memo, useEffect, useRef, useState, useMemo } from "react";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { indiaIntialRegion } from "@/utils/CustomMap";
 import CustomText from "../shared/CustomText";
@@ -20,31 +20,80 @@ const RiderLiveTracking: FC<{
   rider: any;
   status: string;
   vehicleType?: string;
-}> = ({ drop, status, pickup, rider, vehicleType }) => {
+  passengers?: any[];
+}> = ({ drop, status, pickup, rider, vehicleType, passengers = [] }) => {
   const mapRef = useRef<MapView>(null);
   const [isUserInteracting, setIsUserInteracting] = useState(false);
+
+  // Calculate active targets (Pickups for WAITING, Drops for ONBOARD)
+  const activeTargets = useMemo(() => {
+    const targets: any[] = [];
+
+    passengers.forEach(p => {
+      if (p.status === 'WAITING' && p.pickup) {
+        targets.push({
+          type: 'PICKUP',
+          latitude: p.pickup.latitude,
+          longitude: p.pickup.longitude,
+          address: p.pickup.address,
+          passengerName: `${p.firstName} ${p.lastName}`,
+          id: p.userId?._id || p.userId
+        });
+      } else if (p.status === 'ONBOARD' && p.drop) {
+        targets.push({
+          type: 'DROP',
+          latitude: p.drop.latitude,
+          longitude: p.drop.longitude,
+          address: p.drop.address,
+          passengerName: `${p.firstName} ${p.lastName}`,
+          id: p.userId?._id || p.userId
+        });
+      }
+    });
+
+    return targets;
+  }, [passengers]);
+
+  // Find the closest target to the rider
+  const closestTarget = useMemo(() => {
+    if (!rider?.latitude || activeTargets.length === 0) return null;
+
+    let closest = activeTargets[0];
+    let minDistance = Infinity;
+
+    activeTargets.forEach(target => {
+      const dist = Math.sqrt(
+        Math.pow(target.latitude - rider.latitude, 2) +
+        Math.pow(target.longitude - rider.longitude, 2)
+      );
+      if (dist < minDistance) {
+        minDistance = dist;
+        closest = target;
+      }
+    });
+
+    return closest;
+  }, [rider, activeTargets]);
 
   const fitToMarkers = async () => {
     if (isUserInteracting) return;
 
     const coordinates = [];
 
-    if (pickup?.latitude && pickup?.longitude && status === "START") {
-      coordinates.push({
-        latitude: pickup.latitude,
-        longitude: pickup.longitude,
-      });
-    }
-
-    if (drop?.latitude && drop?.longitude && status === "ARRIVED") {
-      coordinates.push({ latitude: drop.latitude, longitude: drop.longitude });
-    }
+    activeTargets.forEach(t => {
+      coordinates.push({ latitude: t.latitude, longitude: t.longitude });
+    });
 
     if (rider?.latitude && rider?.longitude) {
       coordinates.push({
         latitude: rider.latitude,
         longitude: rider.longitude,
       });
+    }
+
+    if (coordinates.length === 0) {
+      if (pickup?.latitude) coordinates.push({ latitude: pickup.latitude, longitude: pickup.longitude });
+      if (drop?.latitude) coordinates.push({ latitude: drop.latitude, longitude: drop.longitude });
     }
 
     if (coordinates.length === 0) return;
@@ -101,7 +150,7 @@ const RiderLiveTracking: FC<{
     console.log("🗺️ RiderLiveTracking - Rider:", rider);
     console.log("🗺️ RiderLiveTracking - Status:", status);
     console.log("🗺️ RiderLiveTracking - API Key:", apikey ? "Present" : "Missing");
-    
+
     if (pickup?.latitude && drop?.latitude) fitToMarkers();
   }, [drop?.latitude, pickup?.latitude, rider?.latitude]);
 
@@ -136,14 +185,13 @@ const RiderLiveTracking: FC<{
         loadingIndicatorColor="#007AFF"
         loadingBackgroundColor="#ffffff"
       >
-        {rider?.latitude && pickup?.latitude && (
+        {rider?.latitude && closestTarget && (
           <MapViewDirections
-            origin={status === "START" ? pickup : rider}
-            destination={status === "START" ? rider : drop}
+            origin={{ latitude: rider.latitude, longitude: rider.longitude }}
+            destination={{ latitude: closestTarget.latitude, longitude: closestTarget.longitude }}
             onReady={fitToMarkersWithDelay}
             apikey={apikey}
             strokeColor={Colors.iosColor}
-            strokeColors={[Colors.iosColor]}
             strokeWidth={5}
             precision="high"
             optimizeWaypoints={true}
@@ -151,34 +199,25 @@ const RiderLiveTracking: FC<{
           />
         )}
 
-        {drop?.latitude && (
+        {activeTargets.map((target, index) => (
           <Marker
-            coordinate={{ latitude: drop.latitude, longitude: drop.longitude }}
+            key={`${target.id}-${target.type}`}
+            coordinate={{ latitude: target.latitude, longitude: target.longitude }}
             anchor={{ x: 0.5, y: 1 }}
-            zIndex={1}
+            zIndex={target.type === 'PICKUP' ? 2 : 1}
+            title={`${target.passengerName} (${target.type})`}
+            description={target.address}
           >
             <Image
-              source={require("@/assets/icons/drop_marker.png")}
+              source={
+                target.type === 'PICKUP'
+                  ? require("@/assets/icons/marker.png")
+                  : require("@/assets/icons/drop_marker.png")
+              }
               style={{ height: 30, width: 30, resizeMode: "contain" }}
             />
           </Marker>
-        )}
-
-        {pickup?.latitude && (
-          <Marker
-            coordinate={{
-              latitude: pickup.latitude,
-              longitude: pickup.longitude,
-            }}
-            anchor={{ x: 0.5, y: 1 }}
-            zIndex={2}
-          >
-            <Image
-              source={require("@/assets/icons/marker.png")}
-              style={{ height: 30, width: 30, resizeMode: "contain" }}
-            />
-          </Marker>
-        )}
+        ))}
 
         {rider?.latitude && (
           <Marker
@@ -192,9 +231,6 @@ const RiderLiveTracking: FC<{
             <View style={{ transform: [{ rotate: `${rider?.heading || 0}deg` }] }}>
               <Image
                 source={
-                  // vehicleType === "Single Motorcycle" // Commented out: Only using Tricycle
-                  //   ? require("@/assets/icons/bike_marker.png")
-                  //   : 
                   vehicleType === "Tricycle"
                     ? require("@/assets/icons/auto_marker.png")
                     : require("@/assets/icons/auto_marker.png") // Default to Tricycle
@@ -204,19 +240,9 @@ const RiderLiveTracking: FC<{
             </View>
           </Marker>
         )}
-
-        {drop && pickup && (
-          <Polyline
-            coordinates={getPoints([drop, pickup])}
-            strokeColor={Colors.text}
-            strokeWidth={2}
-            geodesic={true}
-            lineDashPattern={[12, 10]}
-          />
-        )}
       </MapView>
 
-      <TouchableOpacity style={mapStyles.gpsLiveButton} onPress={() => {}}>
+      <TouchableOpacity style={mapStyles.gpsLiveButton} onPress={() => { }}>
         <CustomText fontFamily="SemiBold" fontSize={10}>
           Open Live GPS
         </CustomText>

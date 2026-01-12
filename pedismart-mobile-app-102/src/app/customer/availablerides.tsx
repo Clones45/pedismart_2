@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Alert } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import CustomText from '@/components/shared/CustomText';
 import AvailableRideCard from '@/components/customer/AvailableRideCard';
@@ -12,6 +12,7 @@ const AvailableRides = () => {
   const [availableRides, setAvailableRides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const params = useLocalSearchParams() as any;
   const { on, off } = useWS();
 
   const fetchRides = async () => {
@@ -97,7 +98,7 @@ const AvailableRides = () => {
   return (
     <View style={styles.container}>
       <StatusBar style="light" backgroundColor="#2196F3" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -107,11 +108,11 @@ const AvailableRides = () => {
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        
+
         <CustomText fontSize={18} fontFamily="Bold" style={styles.headerTitle}>
           Available Rides
         </CustomText>
-        
+
         <TouchableOpacity
           style={styles.refreshButton}
           onPress={onRefresh}
@@ -159,7 +160,7 @@ const AvailableRides = () => {
             <View style={styles.infoCard}>
               <Ionicons name="information-circle" size={20} color="#2196F3" />
               <CustomText fontSize={11} style={styles.infoText}>
-                {availableRides.length} ride{availableRides.length !== 1 ? 's' : ''} available. 
+                {availableRides.length} ride{availableRides.length !== 1 ? 's' : ''} available.
                 Tap "Request to Join" to send a request to the rider.
               </CustomText>
             </View>
@@ -171,6 +172,16 @@ const AvailableRides = () => {
                 onJoinSuccess={() => {
                   fetchRides();
                 }}
+                joinerPickup={params?.pickup_address ? {
+                  address: params.pickup_address,
+                  latitude: parseFloat(params.pickup_latitude),
+                  longitude: parseFloat(params.pickup_longitude),
+                } : undefined}
+                joinerDrop={params?.drop_address ? {
+                  address: params.drop_address,
+                  latitude: parseFloat(params.drop_latitude),
+                  longitude: parseFloat(params.drop_longitude),
+                } : undefined}
               />
             ))}
 

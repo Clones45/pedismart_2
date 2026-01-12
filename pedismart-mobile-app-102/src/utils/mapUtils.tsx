@@ -44,14 +44,14 @@ export const reverseGeocode = async (latitude: number, longitude: number) => {
         console.log('Invalid coordinates for reverse geocoding');
         return "";
     }
-    
+
     // Round coordinates to reduce unnecessary API calls
     const roundedLat = roundCoordinates(latitude);
     const roundedLng = roundCoordinates(longitude);
-    
+
     // Create cache key
     const cacheKey = `${roundedLat},${roundedLng}`;
-    
+
     // Check cache first
     const now = Date.now();
     if (geocodeCache[cacheKey] && (now - geocodeCache[cacheKey].timestamp) < CACHE_EXPIRATION) {
@@ -65,25 +65,25 @@ export const reverseGeocode = async (latitude: number, longitude: number) => {
             `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${process.env.EXPO_PUBLIC_MAP_API_KEY}`,
             { timeout: 10000 } // 10 second timeout
         );
-        
+
         if (response.data.status === 'OK' && response.data.results && response.data.results.length > 0) {
             const address = response.data.results[0].formatted_address;
             console.log(`Address found: ${address}`);
-            
+
             // Cache the result
             geocodeCache[cacheKey] = {
                 address: address,
                 timestamp: now
             };
-            
+
             return address;
         } else {
             console.log('Geocoding failed: ', response.data.status, response.data.error_message || 'No error message');
-            return "Selected location";
+            return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
         }
     } catch (error) {
         console.log('Error during reverse geocoding: ', error);
-        return "Selected location";
+        return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     }
 };
 
@@ -204,7 +204,7 @@ export const vehicleIcons: Record<'Tricycle', { icon: any }> = {
     // "Single Motorcycle": { icon: require('@/assets/icons/SingleMotorcycle-NoBG.png') }, // Commented out: Only using Tricycle
     "Tricycle": { icon: require('@/assets/icons/Tricycle-NoBG.png') },
     // "Cab": { icon: require('@/assets/icons/Car-NoBG.png') }, // Commented out: Only using Tricycle
-  };
+};
 
 // Calculate estimated travel time using Google Maps Distance Matrix API
 export const getEstimatedTravelTime = async (
@@ -217,7 +217,7 @@ export const getEstimatedTravelTime = async (
     try {
         // Use driving mode for all vehicles (only Tricycle is active)
         const travelMode = 'driving'; // vehicleType === 'Single Motorcycle' ? 'driving' : 'driving';
-        
+
         const response = await axios.get(
             'https://maps.googleapis.com/maps/api/distancematrix/json',
             {
@@ -235,7 +235,7 @@ export const getEstimatedTravelTime = async (
             const element = response.data.rows[0].elements[0];
             const durationInSeconds = element.duration.value;
             const distanceInMeters = element.distance.value;
-            
+
             // Adjust duration based on vehicle type (only Tricycle is active)
             let adjustedDuration = durationInSeconds;
             // if (vehicleType === 'Single Motorcycle') { // Commented out: Only using Tricycle
@@ -244,7 +244,7 @@ export const getEstimatedTravelTime = async (
             if (vehicleType === 'Tricycle') {
                 adjustedDuration = Math.round(durationInSeconds * 1.1); // 10% slower
             }
-            
+
             return {
                 durationInSeconds: adjustedDuration,
                 durationText: formatDuration(adjustedDuration),
@@ -271,18 +271,18 @@ const calculateFallbackTravelTime = (
 ) => {
     const distanceKm = calculateDistance(originLat, originLng, destLat, destLng);
     const distanceInMeters = distanceKm * 1000;
-    
+
     // Average speeds in km/h for different vehicle types in city traffic (only Tricycle is active)
     const averageSpeeds = {
         // 'Single Motorcycle': 30, // Commented out: Only using Tricycle
         'Tricycle': 20,          // Slower, local roads
         // 'Cab': 25,               // Commented out: Only using Tricycle
     };
-    
+
     const speed = averageSpeeds[vehicleType];
     const durationInHours = distanceKm / speed;
     const durationInSeconds = Math.round(durationInHours * 3600);
-    
+
     return {
         durationInSeconds,
         durationText: formatDuration(durationInSeconds),
@@ -296,20 +296,20 @@ const formatDuration = (seconds: number): string => {
     if (seconds < 60) {
         return '< 1 min';
     }
-    
+
     const minutes = Math.round(seconds / 60);
-    
+
     if (minutes < 60) {
         return `${minutes} min`;
     }
-    
+
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
-    
+
     if (remainingMinutes === 0) {
         return `${hours} hr`;
     }
-    
+
     return `${hours} hr ${remainingMinutes} min`;
 };
 
@@ -317,17 +317,16 @@ const formatDuration = (seconds: number): string => {
 export const calculateArrivalTime = (durationInSeconds: number): string => {
     const now = new Date();
     const arrivalTime = new Date(now.getTime() + durationInSeconds * 1000);
-    
+
     // Format time as "h:mm am/pm"
     let hours = arrivalTime.getHours();
     const minutes = arrivalTime.getMinutes();
     const ampm = hours >= 12 ? 'pm' : 'am';
-    
+
     hours = hours % 12;
     hours = hours ? hours : 12; // Convert 0 to 12
-    
+
     const minutesStr = minutes < 10 ? `0${minutes}` : minutes;
-    
+
     return `${hours}:${minutesStr} ${ampm}`;
 };
-  

@@ -10,6 +10,7 @@ import { calculateDistance, vehicleIcons } from "@/utils/mapUtils";
 import { Ionicons } from "@expo/vector-icons";
 import CounterButton from "./CounterButton";
 import { MAX_DISTANCE_KM } from "@/service/config";
+import { useReverseGeocoding } from "@/hooks/useReverseGeocoding";
 
 type VehicleType = "Tricycle"; // Commented out: "Single Motorcycle" | "Cab"
 
@@ -27,26 +28,39 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
   removeIt,
 }) => {
   const { location, user } = useRiderStore();
-  
+
+  // Reverse geocode pickup and drop coordinates
+  const { address: pickupAddress } = useReverseGeocoding(
+    item.pickup.latitude,
+    item.pickup.longitude,
+    item.pickup.address
+  );
+
+  const { address: dropAddress } = useReverseGeocoding(
+    item.drop?.latitude,
+    item.drop?.longitude,
+    item.drop?.address
+  );
+
   // Check if ride matches rider's vehicle type
   const riderVehicleType = user?.vehicleType;
   const isVehicleMatch = !riderVehicleType || item.vehicle === riderVehicleType;
-  
+
   // ============================================
   // Check distance from rider to pickup location
   // ============================================
   const distanceToPickup = location && item.pickup
     ? calculateDistance(
-        location.latitude,
-        location.longitude,
-        item.pickup.latitude,
-        item.pickup.longitude
-      )
+      location.latitude,
+      location.longitude,
+      item.pickup.latitude,
+      item.pickup.longitude
+    )
     : null;
-  
+
   const isTooFar = MAX_DISTANCE_KM && distanceToPickup && distanceToPickup > MAX_DISTANCE_KM;
   // ============================================
-  
+
   const acceptRide = async () => {
     // Prevent accepting if vehicle type doesn't match
     if (!isVehicleMatch) {
@@ -57,7 +71,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
       );
       return;
     }
-    
+
     // ============================================
     // Prevent accepting if ride is too far (when MAX_DISTANCE is enabled)
     // ============================================
@@ -70,7 +84,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
       return;
     }
     // ============================================
-    
+
     acceptRideOffer(item?._id);
   };
 
@@ -120,7 +134,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
           </CustomText>
         </View>
       )}
-      
+
       {/* Distance Warning Banner (when MAX_DISTANCE is enabled) */}
       {isTooFar && (
         <View style={{
@@ -164,7 +178,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
           </View>
           <View style={orderStyles?.infoText}>
             <CustomText fontSize={11} numberOfLines={1} fontFamily="SemiBold">
-              {item?.pickup?.address?.slice(0, 10)}
+              {pickupAddress.slice(0, 10)}
             </CustomText>
             <CustomText
               numberOfLines={2}
@@ -172,7 +186,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
               fontFamily="Medium"
               style={orderStyles.label}
             >
-              {item?.pickup?.address}
+              {pickupAddress}
             </CustomText>
           </View>
         </View>
@@ -181,7 +195,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
           <View style={orderStyles.dropHollowCircle} />
           <View style={orderStyles.infoText}>
             <CustomText fontSize={11} numberOfLines={1} fontFamily="SemiBold">
-              {item?.drop?.address?.slice(0, 10)}
+              {dropAddress?.slice(0, 10) || "Dropping Point"}
             </CustomText>
             <CustomText
               numberOfLines={2}
@@ -189,7 +203,7 @@ const RiderRidesItem: FC<{ item: RideItem; removeIt: () => void }> = ({
               fontFamily="Medium"
               style={orderStyles.label}
             >
-              {item?.drop?.address}
+              {dropAddress || "Dropping Point"}
             </CustomText>
           </View>
         </View>

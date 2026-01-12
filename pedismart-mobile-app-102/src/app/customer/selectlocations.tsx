@@ -38,6 +38,7 @@ export default function LocationSelection() {
   const [focusedInput, setFocusedInput] = useState("drop");
   const [modalTitle, setModalTitle] = useState("drop");
   const [isMapModalVisible, setMapModalVisible] = useState(false);
+  const [distanceInfo, setDistanceInfo] = useState<any>(null);
 
   const fetchLocation = async (query: string) => {
     if (query?.length > 4) {
@@ -63,7 +64,7 @@ export default function LocationSelection() {
   const getCategoryColor = (category: string) => {
     const categoryColors = {
       'Government': '#FF6B35',
-      'Shopping': '#007AFF', 
+      'Shopping': '#007AFF',
       'Transport': '#34C759',
       'Healthcare': '#FF3B30'
     };
@@ -124,18 +125,24 @@ export default function LocationSelection() {
       );
     } else {
       setLocations([]);
-      router.navigate({
-        pathname: "/customer/ridebooking",
-        params: {
-          distanceInKm: distance.toFixed(2),
-          drop_latitude: dropCoords?.latitude,
-          drop_longitude: dropCoords?.longitude,
-          drop_address: drop,
-        },
+      setDistanceInfo({
+        distance: distance.toFixed(2),
+        drop_latitude: dropCoords?.latitude,
+        drop_longitude: dropCoords?.longitude,
+        drop_address: drop,
       });
 
       console.log(`Distance is valid : ${distance.toFixed(2)} km`);
     }
+  };
+
+  const handleConfirmLocations = () => {
+    if (!distanceInfo) return;
+
+    router.navigate({
+      pathname: "/customer/ridebooking",
+      params: distanceInfo,
+    });
   };
 
   useEffect(() => {
@@ -143,6 +150,7 @@ export default function LocationSelection() {
       checkDistance();
     } else {
       setLocations([]);
+      setDistanceInfo(null);
       setMapModalVisible(false);
     }
   }, [dropCoords, pickupCoords]);
@@ -223,7 +231,7 @@ export default function LocationSelection() {
                 Select from Map
               </CustomText>
             </TouchableOpacity>
-            
+
             {/* COMMENTED OUT: Most Picked Locations - Temporarily disabled
             Most Picked Locations Section
             <View style={{ marginTop: 20, paddingHorizontal: 16 }}>
@@ -311,6 +319,20 @@ export default function LocationSelection() {
             }
           }}
         />
+      )}
+
+      {distanceInfo && (
+        <View style={locationStyles.confirmButtonContainer}>
+          <TouchableOpacity
+            style={locationStyles.confirmButton}
+            onPress={handleConfirmLocations}
+          >
+            <CustomText fontFamily="SemiBold" style={locationStyles.confirmButtonText}>
+              Confirm Locations & Proceed
+            </CustomText>
+            <Ionicons name="arrow-forward" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );

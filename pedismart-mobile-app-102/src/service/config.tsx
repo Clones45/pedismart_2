@@ -1,10 +1,14 @@
 import { Platform } from "react-native";
 
-// Local development server
+// Local development server (UNCOMMENT AND EDIT YOUR IP HERE)
+// export const BASE_URL = 'http://192.168.1.9:3000';
+// export const SOCKET_URL = 'http://192.168.1.9:3000';
+
+// Default Localhost (Works for Simulators/Emulators on same machine)
 // export const BASE_URL = 'http://localhost:3000';
 // export const SOCKET_URL = 'http://localhost:3000';
 
-// Production deployment - Render.com (commented out for local development)
+// Production deployment - Render.com
 export const BASE_URL = 'https://pedismart-server-deploy102.onrender.com';
 export const SOCKET_URL = 'wss://pedismart-server-deploy102.onrender.com';
 

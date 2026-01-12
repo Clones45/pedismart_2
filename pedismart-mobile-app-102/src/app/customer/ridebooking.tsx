@@ -88,7 +88,7 @@ const RideBooking = () => {
     // Determine which vehicle is fastest (only Tricycle is active)
     // let fastestVehicle = 'Single Motorcycle'; // Commented out: Only using Tricycle
     // let minDuration = travelTimes['Single Motorcycle']?.durationInSeconds || Infinity;
-    
+
     // if (travelTimes['Tricycle']?.durationInSeconds < minDuration) {
     //   fastestVehicle = 'Tricycle';
     //   minDuration = travelTimes['Tricycle'].durationInSeconds;
@@ -185,19 +185,37 @@ const RideBooking = () => {
         },
       });
 
-      await createRide({
-        vehicle: vehicleType,
-        drop: {
-          latitude: dropLat,
-          longitude: dropLng,
-          address: item.drop_address,
-        },
-        pickup: {
-          latitude: pickupLat,
-          longitude: pickupLng,
-          address: location.address,
-        },
-      });
+      Alert.alert(
+        "Confirm Booking",
+        "Are you sure you want to book this ride? Once confirmed, drivers in your area will receive your request.",
+        [
+          {
+            text: "Cancel",
+            onPress: () => setLoading(false),
+            style: "cancel",
+          },
+          {
+            text: "Confirm",
+            onPress: async () => {
+              await createRide({
+                vehicle: vehicleType,
+                drop: {
+                  latitude: dropLat,
+                  longitude: dropLng,
+                  address: item.drop_address,
+                },
+                pickup: {
+                  latitude: pickupLat,
+                  longitude: pickupLng,
+                  address: location.address,
+                },
+              });
+              setLoading(false);
+            },
+          },
+        ]
+      );
+      return; // Exit handleRideBooking after showing the alert
     } catch (error) {
       console.error("Error in handleRideBooking:", error);
       Alert.alert("Error", "Failed to create ride. Please try again.");
@@ -225,7 +243,7 @@ const RideBooking = () => {
 
       <View style={rideStyles.rideSelectionContainer}>
         {/* Header Section */}
-        
+
 
         {loadingTravelTimes ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
@@ -289,7 +307,7 @@ const RideBooking = () => {
             </View>
             {/*<Ionicons name="chevron-forward" size={RFValue(14)} color="#777" />*/}
           </View>
-            {/*
+          {/*
           <View style={rideStyles.couponContainer}>
             <Image
               source={require("@/assets/icons/coupon.png")}
@@ -317,6 +335,39 @@ const RideBooking = () => {
           loading={loading}
           onPress={handleRideBooking}
         />
+
+        <TouchableOpacity
+          style={{
+            marginTop: 10,
+            paddingVertical: 15,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 10,
+            backgroundColor: '#E3F2FD',
+            borderWidth: 1.5,
+            borderColor: '#2196F3',
+          }}
+          onPress={() => {
+            router.push({
+              pathname: '/customer/availablerides',
+              params: {
+                pickup_address: location.address,
+                pickup_latitude: location.latitude,
+                pickup_longitude: location.longitude,
+                drop_address: item.drop_address,
+                drop_latitude: item.drop_latitude,
+                drop_longitude: item.drop_longitude,
+              }
+            });
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="search" size={20} color="#2196F3" />
+            <CustomText fontFamily="Bold" fontSize={14} style={{ color: '#2196F3' }}>
+              Find Available Rides
+            </CustomText>
+          </View>
+        </TouchableOpacity>
       </View>
     </View>
   );

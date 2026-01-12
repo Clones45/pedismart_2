@@ -9,9 +9,24 @@ import { router } from 'expo-router';
 interface AvailableRideCardProps {
   ride: any;
   onJoinSuccess?: () => void;
+  joinerPickup?: {
+    address: string;
+    latitude: number;
+    longitude: number;
+  };
+  joinerDrop?: {
+    address: string;
+    latitude: number;
+    longitude: number;
+  };
 }
 
-const AvailableRideCard: React.FC<AvailableRideCardProps> = ({ ride, onJoinSuccess }) => {
+const AvailableRideCard: React.FC<AvailableRideCardProps> = ({
+  ride,
+  onJoinSuccess,
+  joinerPickup,
+  joinerDrop
+}) => {
   const [joining, setJoining] = React.useState(false);
 
   const handleJoin = async () => {
@@ -28,7 +43,13 @@ const AvailableRideCard: React.FC<AvailableRideCardProps> = ({ ride, onJoinSucce
             try {
               setJoining(true);
               console.log(`🚗 Sending join request for ride: ${ride._id}`);
-              const response = await joinRide(ride._id);
+
+              const payload = {
+                pickup: joinerPickup,
+                drop: joinerDrop
+              };
+
+              const response = await joinRide(ride._id, payload);
               if (response) {
                 console.log('✅ Join request sent, waiting for rider approval');
                 Alert.alert(

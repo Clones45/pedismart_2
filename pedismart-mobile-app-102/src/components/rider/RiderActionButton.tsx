@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity } from "react-native";
-import React, { FC, useState, useEffect } from "react";
+import React, { FC, useState, useEffect, useMemo } from "react";
 import { Colors } from "@/utils/Constants";
 import { Ionicons } from "@expo/vector-icons";
 import SwipeButton from "rn-swipe-button";
@@ -8,6 +8,7 @@ import { commonStyles } from "@/styles/commonStyles";
 import CustomText from "../shared/CustomText";
 import { orderStyles } from "@/styles/riderStyles";
 import { RFValue } from "react-native-responsive-fontsize";
+import { useReverseGeocoding } from "@/hooks/useReverseGeocoding";
 
 const RiderActionButton: FC<{
   ride: any;
@@ -19,26 +20,69 @@ const RiderActionButton: FC<{
 }> = ({ ride, color = Colors.iosColor, title, onPress, riderLocation, onOpenPassengerModal }) => {
   const [eta, setEta] = useState<string>("Calculating...");
 
+  // Calculate active targets (Pickups for WAITING, Drops for ONBOARD)
+  const activeTargets = useMemo(() => {
+    if (!ride?.passengers) return [];
+    const targets: any[] = [];
+
+    ride.passengers.forEach((p: any) => {
+      if (p.status === 'WAITING' && p.pickup) {
+        targets.push({
+          type: 'PICKUP',
+          latitude: p.pickup.latitude,
+          longitude: p.pickup.longitude,
+          address: p.pickup.address,
+          passengerName: `${p.firstName} ${p.lastName}`,
+          id: p.userId?._id || p.userId,
+          phone: p.phone || ""
+        });
+      } else if (p.status === 'ONBOARD' && p.drop) {
+        targets.push({
+          type: 'DROP',
+          latitude: p.drop.latitude,
+          longitude: p.drop.longitude,
+          address: p.drop.address,
+          passengerName: `${p.firstName} ${p.lastName}`,
+          id: p.userId?._id || p.userId,
+          phone: p.phone || ""
+        });
+      }
+    });
+
+    return targets;
+  }, [ride?.passengers]);
+
+  // Find the closest target to the rider
+  const closestTarget = useMemo(() => {
+    if (!riderLocation?.latitude || activeTargets.length === 0) return null;
+
+    let closest = activeTargets[0];
+    let minDistance = Infinity;
+
+    activeTargets.forEach(target => {
+      const dist = Math.sqrt(
+        Math.pow(target.latitude - riderLocation.latitude, 2) +
+        Math.pow(target.longitude - riderLocation.longitude, 2)
+      );
+      if (dist < minDistance) {
+        minDistance = dist;
+        closest = target;
+      }
+    });
+
+    return closest;
+  }, [riderLocation, activeTargets]);
+
   // Calculate ETA based on distance and average speed
   const calculateETA = () => {
-    if (!riderLocation || !ride) {
+    if (!riderLocation || (!ride && !closestTarget)) {
       setEta("Calculating...");
       return;
     }
 
     try {
-      // Determine destination based on ride status
-      let destination;
-      if (ride.status === "START") {
-        // Going to pickup location
-        destination = ride.pickup;
-      } else if (ride.status === "ARRIVED") {
-        // Going to drop location
-        destination = ride.drop;
-      } else {
-        setEta("--");
-        return;
-      }
+      // Determine destination based on closest target or fallback to original behavior
+      let destination = closestTarget || (ride.status === "START" ? ride.pickup : ride.drop);
 
       if (!destination?.latitude || !destination?.longitude) {
         setEta("--");
@@ -52,20 +96,13 @@ const RiderActionButton: FC<{
       const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos((riderLocation.latitude * Math.PI) / 180) *
-          Math.cos((destination.latitude * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
+        Math.cos((destination.latitude * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c; // Distance in km
 
-      // Average speeds based on vehicle type (km/h) - only Tricycle is active
-      const speeds: { [key: string]: number } = {
-        // "Single Motorcycle": 30, // Commented out: Only using Tricycle
-        "Tricycle": 25,
-        // "Cab": 35, // Commented out: Only using Tricycle
-      };
-
-      const averageSpeed = speeds[ride.vehicle] || 30;
+      const averageSpeed = 25; // Average speed in km/h for tricycle
       const timeInHours = distance / averageSpeed;
       const timeInMinutes = Math.ceil(timeInHours * 60);
 
@@ -82,13 +119,13 @@ const RiderActionButton: FC<{
     }
   };
 
-  // Recalculate ETA when rider location or ride status changes
+  // Recalculate ETA when rider location or active targets change
   useEffect(() => {
     calculateETA();
     // Update ETA every 10 seconds for real-time accuracy
     const interval = setInterval(calculateETA, 10000);
     return () => clearInterval(interval);
-  }, [riderLocation, ride?.status, ride?.pickup, ride?.drop]);
+  }, [riderLocation, ride?.status, closestTarget]);
 
   const CheckoutButton = () => (
     <Ionicons
@@ -97,6 +134,14 @@ const RiderActionButton: FC<{
       size={32}
       color="#fff"
     />
+  );
+
+
+  // Reverse geocode next stop coordinates
+  const { address: nextStopAddress } = useReverseGeocoding(
+    closestTarget?.latitude || (ride?.status === "START" ? ride?.pickup?.latitude : ride?.drop?.latitude),
+    closestTarget?.longitude || (ride?.status === "START" ? ride?.pickup?.longitude : ride?.drop?.longitude),
+    closestTarget?.address || (ride?.status === "START" ? ride?.pickup?.address : ride?.drop?.address)
   );
 
   return (
@@ -145,7 +190,7 @@ const RiderActionButton: FC<{
           numberOfLines={1}
           fontFamily="Medium"
         >
-          Meet the Customer
+          {closestTarget ? `Next Stop: ${closestTarget.passengerName}` : "Meet the Customer"}
         </CustomText>
         <CustomText
           fontSize={11}
@@ -154,10 +199,10 @@ const RiderActionButton: FC<{
           fontFamily="Medium"
         >
           {" "}
-          {ride?.customer?.phone &&
-            ride?.customer?.phone?.slice(0, 5) +
-              " " +
-              ride?.customer?.phone?.slice(5)}
+          {(closestTarget?.phone || ride?.customer?.phone) &&
+            (closestTarget?.phone || ride?.customer?.phone)?.slice(0, 5) +
+            " " +
+            (closestTarget?.phone || ride?.customer?.phone)?.slice(5)}
         </CustomText>
       </View>
 
@@ -205,12 +250,11 @@ const RiderActionButton: FC<{
       <View style={[orderStyles.locationsContainer, { marginTop: 4 }]}>
         <View style={orderStyles.flexRowBase}>
           <View>
-            <View style={orderStyles.pickupHollowCircle} />
-            <View style={orderStyles.continuousLine} />
+            <View style={closestTarget?.type === 'DROP' ? orderStyles.dropHollowCircle : orderStyles.pickupHollowCircle} />
           </View>
           <View style={orderStyles.infoText}>
             <CustomText fontSize={11} numberOfLines={1} fontFamily="SemiBold">
-              {ride?.pickup?.address?.slice(0, 10)}
+              {closestTarget?.type || "Next Task"}
             </CustomText>
             <CustomText
               numberOfLines={2}
@@ -218,24 +262,7 @@ const RiderActionButton: FC<{
               fontFamily="Medium"
               style={orderStyles.label}
             >
-              {ride?.pickup?.address}
-            </CustomText>
-          </View>
-        </View>
-
-        <View style={orderStyles.flexRowBase}>
-          <View style={orderStyles.dropHollowCircle} />
-          <View style={orderStyles.infoText}>
-            <CustomText fontSize={11} numberOfLines={1} fontFamily="SemiBold">
-              {ride?.drop?.address?.slice(0, 10)}
-            </CustomText>
-            <CustomText
-              numberOfLines={2}
-              fontSize={9.5}
-              fontFamily="Medium"
-              style={orderStyles.label}
-            >
-              {ride?.drop?.address}
+              {nextStopAddress}
             </CustomText>
           </View>
         </View>

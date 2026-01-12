@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "PediSmart",
+    "owner": "jastine-hernan",
     "slug": "pedismartapp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -67,7 +67,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "8579beb5-690f-4387-8817-d87f8543b8b8"
+        "projectId": "623a0c4d-3df7-42c4-9bd1-b66a97fd5e77"
       }
     }
   }

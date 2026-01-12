@@ -61,9 +61,9 @@ const LocationTracker: React.FC = () => {
         emit("goOnDuty", fallbackLocation);
         return;
       }
-      
+
       const { latitude, longitude, heading } = initialLocation.coords;
-      
+
       // Update local store
       setLocation({
         latitude,
@@ -71,7 +71,7 @@ const LocationTracker: React.FC = () => {
         address: 'Current Location',
         heading: heading || 0,
       });
-      
+
       // Send initial location to server
       emit('updateLocation', {
         latitude,
@@ -87,8 +87,8 @@ const LocationTracker: React.FC = () => {
           timeInterval: 5000, // Or at least every 5 seconds
         },
         (location) => {
-          const { latitude, longitude, heading } = location.coords;
-          
+          const { latitude, longitude, heading, accuracy } = location.coords;
+
           // Update local store
           setLocation({
             latitude,
@@ -96,13 +96,29 @@ const LocationTracker: React.FC = () => {
             address: 'Current Location',
             heading: heading || 0,
           });
-          
+
           // Send location update to server
           emit('updateLocation', {
             latitude,
             longitude,
             heading: heading || 0,
           });
+
+          // Thesis Requirement: Send accuracy metrics for "System Accuracy" analysis
+          // This fulfills RQ2 (Reliability/Accuracy) data collection
+          if (accuracy) {
+            emit('accuracyEvent', {
+              metric: 'GPS_ACCURACY',
+              value: accuracy, // Error in meters
+              isCorrect: accuracy <= 15, // Success if within 15 meters (Thesis Benchmark)
+              timestamp: new Date().toISOString(),
+              meta: {
+                latitude,
+                longitude,
+                source: 'BackgroundWatcher'
+              }
+            });
+          }
         }
       );
     } catch (error) {

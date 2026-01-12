@@ -1,4 +1,4 @@
-import { View, Text, Alert } from "react-native";
+import { View, Text, Alert, TouchableOpacity } from "react-native";
 import React, { useEffect, useState } from "react";
 import { useRiderStore } from "@/store/riderStore";
 import { useWS } from "@/service/WSProvider";
@@ -12,11 +12,12 @@ import { updateRideStatus, cancelRideOffer } from "@/service/rideService";
 import RiderActionButton from "@/components/rider/RiderActionButton";
 import OtpInputModal from "@/components/rider/OtpInputModal";
 import CustomText from "@/components/shared/CustomText";
-import { TouchableOpacity } from "react-native-gesture-handler";
+// import { TouchableOpacity } from "react-native-gesture-handler"; // Removed
 import { Ionicons } from "@expo/vector-icons";
 import PassengerListModal from "@/components/rider/PassengerListModal";
 import PassengerJoinRequestModal from "@/components/rider/PassengerJoinRequestModal";
 import { sendAccuracyMetric } from "@/utils/accuracy";
+import { reverseGeocode } from "@/utils/mapUtils";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   START: ["ARRIVED", "CANCELLED"],
@@ -40,8 +41,8 @@ function haversineDistance(
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
@@ -52,13 +53,16 @@ const LiveRide = () => {
   const [acceptingPassengers, setAcceptingPassengers] = useState(true);
   const [joinRequest, setJoinRequest] = useState<any>(null);
   const [showJoinRequestModal, setShowJoinRequestModal] = useState(false);
-  const { setLocation, location, setOnDuty } = useRiderStore();
+  const { setLocation, location, setOnDuty, addDistance, resetDistance, distanceTraveled } = useRiderStore();
   const { emit, on, off } = useWS();
   const [rideData, setRideData] = useState<any>(null);
   const [currentLocation, setCurrentLocation] = useState(location);
   const route = useRoute() as any;
   const params = route?.params || {};
   const id = params.id;
+
+  // Use a ref to track the last location for distance calculation without re-rendering or stale closures
+  const lastLocationRef = React.useRef<{ latitude: number, longitude: number } | null>(null);
 
   const handleCancelRide = async () => {
     Alert.alert(
@@ -86,14 +90,14 @@ const LiveRide = () => {
   const handleUpdatePassengerStatus = async (passengerId: string, status: string) => {
     try {
       console.log(`🔄 Updating passenger ${passengerId} status to ${status} via WebSocket`);
-      
+
       // Use WebSocket instead of HTTP - no auth token needed!
       emit("updatePassengerStatus", {
         rideId: id,
         passengerId: passengerId,
         status: status
       });
-      
+
       console.log(`✅ Status update request sent via WebSocket`);
     } catch (error) {
       console.error("Error updating passenger status:", error);
@@ -104,13 +108,13 @@ const LiveRide = () => {
   const handleRemovePassenger = async (passengerId: string) => {
     try {
       console.log(`🗑️ Removing passenger ${passengerId} via WebSocket`);
-      
+
       // Use WebSocket instead of HTTP - no auth token needed!
       emit("removePassenger", {
         rideId: id,
         passengerId: passengerId
       });
-      
+
       console.log(`✅ Remove passenger request sent via WebSocket`);
     } catch (error) {
       console.error("Error removing passenger:", error);
@@ -121,12 +125,12 @@ const LiveRide = () => {
   const handleToggleAcceptingPassengers = async () => {
     try {
       console.log(`🔄 Toggling accepting passengers via WebSocket`);
-      
+
       // Use WebSocket instead of HTTP - no auth token needed!
       emit("toggleAcceptingPassengers", {
         rideId: id
       });
-      
+
       console.log(`✅ Toggle accepting request sent via WebSocket`);
     } catch (error: any) {
       console.error("Error toggling accepting passengers:", error);
@@ -142,17 +146,19 @@ const LiveRide = () => {
 
     try {
       console.log("✅ Approving join request via WebSocket for passenger:", joinRequest.passenger.userId);
-      
+
       // Use WebSocket instead of HTTP - no auth token needed!
       emit("approveJoinRequest", {
         rideId: joinRequest.rideId,
-        passengerId: joinRequest.passenger.userId
+        passengerId: joinRequest.passenger.userId,
+        pickup: joinRequest.ride.joinerPickup,
+        drop: joinRequest.ride.joinerDrop
       });
 
       // Close modal immediately - we'll get confirmation via socket
       setShowJoinRequestModal(false);
       setJoinRequest(null);
-      
+
       console.log("✅ Approve request sent via WebSocket");
     } catch (error: any) {
       console.error("❌ Error approving join request:", error);
@@ -168,7 +174,7 @@ const LiveRide = () => {
 
     try {
       console.log("❌ Declining join request via WebSocket for passenger:", joinRequest.passenger.userId);
-      
+
       // Use WebSocket instead of HTTP - no auth token needed!
       emit("declineJoinRequest", {
         rideId: joinRequest.rideId,
@@ -178,7 +184,7 @@ const LiveRide = () => {
       // Close modal immediately - we'll get confirmation via socket
       setShowJoinRequestModal(false);
       setJoinRequest(null);
-      
+
       console.log("✅ Decline request sent via WebSocket");
     } catch (error: any) {
       console.error("❌ Error declining join request:", error);
@@ -187,6 +193,10 @@ const LiveRide = () => {
   };
 
   useEffect(() => {
+    // Reset distance when starting a new ride session
+    resetDistance();
+    lastLocationRef.current = null;
+
     let locationSubscription: any;
 
     const startLocationUpdates = async () => {
@@ -194,7 +204,7 @@ const LiveRide = () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === "granted") {
           console.log("🚀 Starting live location tracking for rider...");
-          
+
           locationSubscription = await Location.watchPositionAsync(
             {
               accuracy: Location.Accuracy.High,
@@ -203,15 +213,56 @@ const LiveRide = () => {
             },
             (locationData) => {
               const { latitude, longitude, heading, speed } = locationData.coords;
-              
+
+              // Calculate distance delta if we have a previous location
+              if (lastLocationRef.current) {
+                const deltaMeters = haversineDistance(
+                  lastLocationRef.current.latitude,
+                  lastLocationRef.current.longitude,
+                  latitude,
+                  longitude
+                );
+
+                // Only add reasonable distances (e.g., ignore massive jumps > 1km which might be GPS glitches)
+                if (deltaMeters > 0 && deltaMeters < 1000) {
+                  addDistance(deltaMeters);
+                }
+              }
+
+              // Update last location ref
+              lastLocationRef.current = { latitude, longitude };
+
+              // We'll let the hook or a separate effect handle the address, 
+              // but for the immediate state update, we can't await the hook here inside the callback easily.
+              // However, we can use the existing reverseGeocode util directly content here if we want instant update,
+              // or just set "Live Location" and let a separate component/effect refine it.
+              // Given the structure, let's keep "Live Location" here but we should probably 
+              // update the store with the real address if we want it displayed elsewhere.
+              // For this file, let's inject the reverse geocoding *after* or *parallel* 
+              // using the util directly since we are in a callback.
+
               const newLocation = {
                 latitude: latitude,
                 longitude: longitude,
-                address: "Live Location",
+                address: "Live Location", // Will be updated by reverse geocoding
                 heading: heading as number,
                 speed: speed || 0,
                 timestamp: Date.now(),
               };
+
+              // Fire and forget reverse geocoding to update the store with better address eventually?
+              // Or better yet, just use the utility here since `emit` sends data to server.
+              // The user request was about "rider screen is displaying coordinates...".
+              // If we change it here, it might propagate.
+
+              // Use util directly as we are in a callback, not a render cycle
+              reverseGeocode(latitude, longitude).then(address => {
+                if (address) {
+                  newLocation.address = address;
+                  setLocation({ ...newLocation });
+                  // Note: This might cause double render, but ensures address is correct 
+                }
+              });
 
               // Update both store and local state
               setLocation(newLocation);
@@ -230,7 +281,7 @@ const LiveRide = () => {
                 });
               }
 
-              
+
 
               // Emit location updates to server
               emit("goOnDuty", {
@@ -342,8 +393,8 @@ const LiveRide = () => {
       });
 
       on("rideData", (data) => {
-      sendAccuracyMetric(emit, "WS_RECEIVE", true);
-      setRideData(data);
+        sendAccuracyMetric(emit, "WS_RECEIVE", true);
+        setRideData(data);
 
       });
 
@@ -450,6 +501,7 @@ const LiveRide = () => {
               heading: currentLocation?.heading || location?.heading,
             }}
             vehicleType={rideData?.vehicle}
+            passengers={rideData?.passengers || []}
           />
 
           {/* Minimal Passenger Counter - Top Left */}
@@ -552,22 +604,35 @@ const LiveRide = () => {
           currentLocation?.latitude && currentLocation?.longitude
             ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
             : location?.latitude && location?.longitude
-            ? { latitude: location.latitude, longitude: location.longitude }
-            : undefined
+              ? { latitude: location.latitude, longitude: location.longitude }
+              : undefined
         }
         title={
           rideData?.status === "START"
             ? "ARRIVED"
             : rideData?.status === "ARRIVED"
-            ? "COMPLETED"
-            : "SUCCESS"
+              ? "COMPLETED"
+              : "SUCCESS"
         }
         onPress={async () => {
           if (rideData?.status === "START") {
             setOtpModalVisible(true);
             return;
           }
-          const isSuccess = await updateRideStatus(rideData?._id, "COMPLETED");
+
+          // Get current location for Early Stop detection
+          const loc = currentLocation || location;
+          let locationPayload = undefined;
+
+          if (loc && loc.latitude && loc.longitude) {
+            locationPayload = {
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              address: loc.address || ""
+            };
+          }
+
+          const isSuccess = await updateRideStatus(rideData?._id, "COMPLETED", locationPayload, distanceTraveled);
           if (isSuccess) {
             Alert.alert("Congratulations! Ride Completed 🎉");
             resetAndNavigate("/rider/home");
@@ -589,6 +654,7 @@ const LiveRide = () => {
           sendAccuracyMetric(emit, "FSM_TRANSITION", validTransition, {
             from: rideData.status,
             to: "ARRIVED",
+            metric: "FSM_INTEGRITY" // Thesis Metric
           });
 
           if (!validTransition) {
@@ -598,16 +664,32 @@ const LiveRide = () => {
 
           const otpCorrect = otp === rideData?.otp;
 
-          sendAccuracyMetric(emit, "OTP_VALIDATION", otpCorrect);
+          sendAccuracyMetric(emit, "OTP_VALIDATION", otpCorrect, {
+            metric: "OTP_ACCURACY" // Thesis Metric
+          });
 
           if (!otpCorrect) {
             Alert.alert("Wrong OTP");
             return;
           }
 
+          // THESIS: Capture Ground Truth location for Geospatial Integrity
+          // This fixes the "Missing actual pickup location" bug
+          const loc = currentLocation || location;
+          let locationPayload = undefined;
+
+          if (loc && loc.latitude && loc.longitude) {
+            locationPayload = {
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+              address: loc.address || ""
+            };
+          }
+
           const isSuccess = await updateRideStatus(
             rideData?._id,
-            "ARRIVED"
+            "ARRIVED",
+            locationPayload // Passing location ensures server logs "Real Data"
           );
 
           if (isSuccess) {

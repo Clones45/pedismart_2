@@ -15,9 +15,12 @@ interface RiderStoreProps {
   user: any;
   location: CustomLocation;
   onDuty: boolean;
+  distanceTraveled: number;
   setUser: (data: any) => void;
   setOnDuty: (data: boolean) => void;
   setLocation: (data: CustomLocation) => void;
+  addDistance: (meters: number) => void;
+  resetDistance: () => void;
   clearRiderData: () => void;
 }
 
@@ -27,10 +30,13 @@ export const useRiderStore = create<RiderStoreProps>()(
       user: null,
       location: null,
       onDuty: false,
+      distanceTraveled: 0,
       setUser: (data) => set({ user: data }),
       setLocation: (data) => set({ location: data }),
       setOnDuty: (data) => set({ onDuty: data }),
-      clearRiderData: () => set({ user: null, location: null, onDuty: false }),
+      addDistance: (meters) => set((state) => ({ distanceTraveled: (state.distanceTraveled || 0) + meters })),
+      resetDistance: () => set({ distanceTraveled: 0 }),
+      clearRiderData: () => set({ user: null, location: null, onDuty: false, distanceTraveled: 0 }),
     }),
     {
       name: "rider-store",

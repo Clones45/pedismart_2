@@ -77,27 +77,33 @@ const PassengerJoinRequestModal: React.FC<PassengerJoinRequestModalProps> = ({
           {/* Ride Info */}
           <View style={styles.rideInfoContainer}>
             <CustomText fontSize={12} fontFamily="SemiBold" style={styles.sectionTitle}>
-              Current Ride
+              Requested Route
             </CustomText>
-            
+
             <View style={styles.routeRow}>
               <Ionicons name="location" size={16} color="#4CAF50" />
-              <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
-                {rideDetails?.pickup?.address || 'Pickup location'}
-              </CustomText>
+              <View style={{ flex: 1 }}>
+                <CustomText fontSize={10} fontFamily="Bold" style={{ color: '#4CAF50' }}>PICKUP</CustomText>
+                <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
+                  {rideDetails?.joinerPickup?.address || rideDetails?.pickup?.address || 'Pickup location'}
+                </CustomText>
+              </View>
             </View>
 
             <View style={styles.routeRow}>
               <Ionicons name="flag" size={16} color="#f44336" />
-              <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
-                {rideDetails?.drop?.address || 'Drop location'}
-              </CustomText>
+              <View style={{ flex: 1 }}>
+                <CustomText fontSize={10} fontFamily="Bold" style={{ color: '#f44336' }}>DROP-OFF</CustomText>
+                <CustomText fontSize={11} numberOfLines={2} style={styles.routeText}>
+                  {rideDetails?.joinerDrop?.address || rideDetails?.drop?.address || 'Drop location'}
+                </CustomText>
+              </View>
             </View>
 
             <View style={styles.passengerCount}>
               <Ionicons name="people" size={16} color="#666" />
               <CustomText fontSize={12} style={styles.countText}>
-                Current: {rideDetails?.currentPassengerCount || 1}/{rideDetails?.maxPassengers || 6} passengers
+                Current Load: {rideDetails?.currentPassengerCount || 1}/{rideDetails?.maxPassengers || 6}
               </CustomText>
             </View>
           </View>

@@ -14,20 +14,20 @@ interface coords {
 // MULTI-PASSENGER FEATURE - Service Functions
 // ============================================
 
-export const joinRide = async (rideId: string) => {
+export const joinRide = async (rideId: string, payload: any = {}) => {
   try {
-    console.log(`🚗 Joining ride: ${rideId}`);
-    const res = await api.post(`/ride/join/${rideId}`, {}, {
+    console.log(`🚗 Joining ride: ${rideId} with payload:`, JSON.stringify(payload));
+    const res = await api.post(`/ride/join/${rideId}`, payload, {
       timeout: 10000, // 10 second timeout
     });
     console.log("✅ Successfully joined ride:", res.data);
     return res.data.ride;
   } catch (error: any) {
     console.error("❌ Error joining ride:", error);
-    
+
     // Better error handling
     let errorMessage = "Failed to join ride";
-    
+
     if (error.response) {
       // Server responded with error
       errorMessage = error.response.data?.message || error.response.data?.error || errorMessage;
@@ -41,7 +41,7 @@ export const joinRide = async (rideId: string) => {
       errorMessage = error.message || errorMessage;
       console.error("Request error:", error.message);
     }
-    
+
     Alert.alert("Error", errorMessage);
     return null;
   }
@@ -57,7 +57,7 @@ export const getAvailableRidesForJoining = async () => {
     return res.data.rides || [];
   } catch (error: any) {
     console.error("❌ Error fetching available rides:", error);
-    
+
     if (error.response) {
       console.error("Server error:", error.response.status, error.response.data);
     } else if (error.request) {
@@ -65,7 +65,7 @@ export const getAvailableRidesForJoining = async () => {
     } else {
       console.error("Request error:", error.message);
     }
-    
+
     return [];
   }
 };
@@ -79,11 +79,11 @@ export const createRide = async (payload: {
 }) => {
   try {
     console.log("Sending ride creation request with payload:", JSON.stringify(payload, null, 2));
-    
+
     const res = await api.post(`/ride/create`, payload);
-    
+
     console.log("Ride created successfully:", res.data);
-    
+
     router?.navigate({
       pathname: "/customer/liveride",
       params: {
@@ -92,13 +92,13 @@ export const createRide = async (payload: {
     });
   } catch (error: any) {
     console.error("Error:Create Ride ", error);
-    
+
     // Enhanced error logging
     if (error.response) {
       console.error("Response status:", error.response.status);
       console.error("Response data:", error.response.data);
       console.error("Response headers:", error.response.headers);
-      
+
       // Show specific error message from server if available
       const errorMessage = error.response.data?.message || error.response.data?.error || "Failed to create ride";
       Alert.alert("Error", errorMessage);
@@ -116,30 +116,30 @@ export const getMyRides = async (isCustomer: boolean = true) => {
   try {
     const res = await api.get(`/ride/rides`);
     const currentUserId = useUserStore.getState().user?.id;
-    
+
     console.log(`🔍 getMyRides: Current user ID: ${currentUserId}`);
     console.log(`🔍 getMyRides: Total rides returned: ${res.data.rides?.length || 0}`);
-    
+
     // Only navigate to ACTIVE rides (exclude COMPLETED, CANCELLED, TIMEOUT)
     // AND exclude rides where current user is a DROPPED passenger
     const activeRides = res.data.rides?.filter(
       (ride: any) => {
         console.log(`🔍 Checking ride ${ride._id} - Status: ${ride.status}`);
-        
-        const isActiveRide = 
-          ride?.status === "SEARCHING_FOR_RIDER" || 
-          ride?.status === "START" || 
+
+        const isActiveRide =
+          ride?.status === "SEARCHING_FOR_RIDER" ||
+          ride?.status === "START" ||
           ride?.status === "ARRIVED";
-        
+
         if (!isActiveRide) {
           console.log(`❌ Ride ${ride._id} is not active (status: ${ride.status})`);
           return false;
         }
-        
+
         // Check if current user is a DROPPED passenger in this ride
         if (currentUserId && ride?.passengers?.length > 0) {
           console.log(`👥 Ride ${ride._id} has ${ride.passengers.length} passengers`);
-          
+
           const currentPassenger = ride.passengers.find(
             (p: any) => {
               const pUserId = p.userId?._id || p.userId;
@@ -147,10 +147,10 @@ export const getMyRides = async (isCustomer: boolean = true) => {
               return pUserId === currentUserId;
             }
           );
-          
+
           if (currentPassenger) {
             console.log(`✅ Found current user as passenger - Status: ${currentPassenger.status}`);
-            
+
             // If user is a DROPPED passenger, exclude this ride
             if (currentPassenger.status === 'DROPPED') {
               console.log(`🚫 EXCLUDING ride ${ride._id} - current user is DROPPED passenger`);
@@ -160,12 +160,12 @@ export const getMyRides = async (isCustomer: boolean = true) => {
             console.log(`⚠️ Current user not found in passengers list for ride ${ride._id}`);
           }
         }
-        
+
         console.log(`✅ Including ride ${ride._id} in active rides`);
         return true;
       }
     );
-    
+
     if (activeRides?.length > 0) {
       console.log(`🚗 Found ${activeRides.length} active ride(s), navigating to first one: ${activeRides[0]?._id}`);
       router?.navigate({
@@ -207,9 +207,9 @@ export const acceptRideOffer = async (rideId: string) => {
   }
 };
 
-export const updateRideStatus = async (rideId: string, status: string) => {
+export const updateRideStatus = async (rideId: string, status: string, location?: { latitude: number; longitude: number; address?: string }, distanceTraveled?: number) => {
   try {
-    const res = await api.patch(`/ride/update/${rideId}`, { status });
+    const res = await api.patch(`/ride/update/${rideId}`, { status, location, distanceTraveled });
     return true;
   } catch (error: any) {
     Alert.alert("Oh! Dang there was an error");
