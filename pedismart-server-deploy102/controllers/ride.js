@@ -777,7 +777,11 @@ export const joinRide = async (req, res) => {
     }
   } catch (error) {
     console.error("Error joining ride:", error);
-    throw new BadRequestError(error.message || "Failed to join ride");
+    // Preserve original error message for known errors (e.g. "Rider is not online", "Ride is full")
+    if (error instanceof BadRequestError || error instanceof NotFoundError) {
+      throw error;
+    }
+    throw new BadRequestError("Failed to join ride");
   }
 };
 
